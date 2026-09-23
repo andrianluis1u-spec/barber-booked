@@ -130,9 +130,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       onClick={() => navigate("/")}
                     />
                   </div>
-                <CardTitle className="text-xl">Barber sign in</CardTitle>
+                <CardTitle className="text-xl">Barber access</CardTitle>
                 <CardDescription>
-                  Enter your email to open your dashboard
+                  Sign in to view today's appointments
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleEmailSubmit}>

@@ -123,10 +123,10 @@ export default function Dashboard() {
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {dayOffset === 0
-                ? "Today's bookings"
+                ? "Today's appointments"
                 : dayOffset === 1
-                  ? "Tomorrow's bookings"
-                  : format(selectedDate, "EEEE") + "'s bookings"}
+                  ? "Tomorrow's appointments"
+                  : `${format(selectedDate, "EEEE")}'s appointments`}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -159,7 +159,7 @@ export default function Dashboard() {
         {/* Stats */}
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: "Bookings", value: counts.total, tone: "text-foreground" },
+            { label: "Appointments", value: counts.total, tone: "text-foreground" },
             { label: "Confirmed", value: counts.confirmed, tone: "text-primary" },
             {
               label: "Pending",
@@ -190,16 +190,16 @@ export default function Dashboard() {
           {appointments === undefined ? (
             <div className="flex items-center gap-2 rounded-2xl border bg-card p-8 text-sm text-muted-foreground">
               <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              Loading bookings…
+              Loading appointments…
             </div>
           ) : appointments.length === 0 ? (
             <div className="rounded-2xl border border-dashed bg-card/50 p-10 text-center">
               <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
                 <CalendarDays className="size-5 text-muted-foreground" />
               </div>
-              <p className="mt-4 font-medium">No bookings for this day</p>
+              <p className="mt-4 font-medium">No appointments for this day</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                New bookings made by clients will appear here in real time.
+                New client bookings will appear here as they are made.
               </p>
             </div>
           ) : (
@@ -275,10 +275,10 @@ export default function Dashboard() {
         </div>
 
         <p className="mt-10 text-center text-xs text-muted-foreground">
-          Reminder texts and rebook nudges are planned for v2 — bookings made on
-          {" "}
-          <span className="font-medium text-foreground">/book</span> already
-          appear here live.
+          Reminder messages and rebooking invitations arrive with the next
+          release. Appointments booked on{" "}
+          <span className="font-medium text-foreground">/book</span> appear
+          here in real time.
         </p>
       </main>
     </div>

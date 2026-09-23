@@ -25,18 +25,18 @@ import {
 const STEPS = [
   {
     icon: CalendarDays,
-    title: "Pick a day & time",
-    body: "Choose a date and grab one of the open slots — live availability, no back-and-forth.",
+    title: "Choose your time",
+    body: "Select a date and reserve an open slot. Availability is always current, so there is no waiting on a reply.",
   },
   {
     icon: Smartphone,
-    title: "Leave your number",
-    body: "Name, phone, service. That's all we need — no account, no app to install.",
+    title: "Leave your details",
+    body: "Your name, phone number and service of choice. No account, no downloads — the essentials only.",
   },
   {
     icon: BellRing,
-    title: "Get reminded",
-    body: "The barber sees your booking instantly, and you get a reminder an hour before your slot.",
+    title: "Arrive assured",
+    body: "The barber receives your appointment immediately, and a reminder reaches you an hour before your time.",
   },
 ];
 
@@ -66,7 +66,7 @@ export default function Landing() {
               Services
             </a>
             <a className="transition-colors hover:text-foreground" href="#barber">
-              For barbers
+              For the barber
             </a>
           </nav>
           <div className="flex items-center gap-2">
@@ -76,11 +76,11 @@ export default function Landing() {
               size="sm"
               className="hidden sm:inline-flex"
             >
-              <Link to="/dashboard">Barber sign in</Link>
+              <Link to="/dashboard">Barber access</Link>
             </Button>
             <Button asChild size="sm" className="rounded-full">
               <Link to="/book">
-                Book a chair
+                Book an appointment
                 <ArrowRight className="ml-1 size-4" />
               </Link>
             </Button>
@@ -102,7 +102,7 @@ export default function Landing() {
                 className="mb-5 gap-1.5 rounded-full border-primary/25 bg-primary/5 px-3 py-1 text-primary"
               >
                 <Sparkles className="size-3.5" />
-                Online booking for {BARBER_NAME}, {BARBER_CITY}
+                Appointment booking · {BARBER_NAME}, {BARBER_CITY}
               </Badge>
             </motion.div>
             <motion.h1
@@ -111,8 +111,9 @@ export default function Landing() {
               transition={{ duration: 0.55, delay: 0.08 }}
               className="font-serif text-4xl font-semibold leading-[1.08] tracking-tight text-balance sm:text-5xl lg:text-6xl"
             >
-              Your chair, booked in{" "}
-              <span className="text-primary">under a minute</span>.
+              A properly kept{" "}
+              <span className="text-primary">appointment</span>, every
+              single time.
             </motion.h1>
             <motion.p
               initial={{ opacity: 0, y: 20 }}
@@ -120,9 +121,10 @@ export default function Landing() {
               transition={{ duration: 0.55, delay: 0.16 }}
               className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8"
             >
-              Clients pick a slot and leave their number. The booking lands on
-              the barber's phone, a reminder goes out an hour before — and
-              no-shows get a one-tap rebook link instead of an empty chair.
+              Barber Booked is the appointment desk for a modern barbershop:
+              clients reserve a chair in under a minute, the barber sees every
+              booking the moment it is made, and reminders make sure no time —
+              or client — is left waiting.
             </motion.p>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -142,7 +144,7 @@ export default function Landing() {
                 variant="outline"
                 className="rounded-full px-7"
               >
-                <Link to="/dashboard">I'm the barber</Link>
+                <Link to="/dashboard">Barber access</Link>
               </Button>
             </motion.div>
             <motion.p
@@ -152,7 +154,7 @@ export default function Landing() {
               className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"
             >
               <ShieldCheck className="size-4 text-primary" />
-              Free for clients · takes about 40 seconds
+              Complimentary for clients · takes under a minute
             </motion.p>
           </div>
 
@@ -168,7 +170,7 @@ export default function Landing() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Next available
+                    Next available sitting
                   </p>
                   <Badge className="rounded-full bg-primary/10 text-primary hover:bg-primary/10">
                     Today
@@ -179,9 +181,9 @@ export default function Landing() {
                 </p>
                 <div className="mt-5 space-y-3">
                   {[
-                    { icon: Scissors, label: "Cut + Beard", meta: "45 min · $35" },
-                    { icon: Clock, label: "Reminders", meta: "1 hour before" },
-                    { icon: MessageSquareText, label: "Confirmation", meta: "By SMS" },
+                    { icon: Scissors, label: "Cut & Beard", meta: "60 minutes · $35" },
+                    { icon: Clock, label: "Reminder", meta: "One hour before" },
+                    { icon: MessageSquareText, label: "Confirmation", meta: "Sent by message" },
                   ].map((row) => (
                     <div
                       key={row.label}
@@ -201,7 +203,7 @@ export default function Landing() {
                   ))}
                 </div>
                 <Button asChild className="mt-5 w-full rounded-full">
-                  <Link to="/book">Reserve this slot</Link>
+                  <Link to="/book">Reserve this sitting</Link>
                 </Button>
               </CardContent>
             </Card>
@@ -217,7 +219,7 @@ export default function Landing() {
               How it works
             </p>
             <h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
-              Three taps from open slot to confirmed chair
+              Three quiet steps between intention and appointment
             </h2>
           </div>
           <div className="mt-12 grid gap-6 md:grid-cols-3">
@@ -260,7 +262,7 @@ export default function Landing() {
                 Services
               </p>
               <h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
-                Straightforward menu, fair prices
+                A short menu, executed properly
               </h2>
             </div>
             <Button asChild variant="outline" className="rounded-full">
@@ -289,7 +291,7 @@ export default function Landing() {
                       {s.blurb}
                     </p>
                     <p className="mt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      ~{s.minutes} min
+                      {s.minutes} minutes
                     </p>
                   </CardContent>
                 </Card>
@@ -304,16 +306,16 @@ export default function Landing() {
         <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:items-center">
           <div>
             <p className="text-sm font-medium uppercase tracking-wider text-primary">
-              For barbers
+              For the barber
             </p>
             <h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
-              Your day, on one screen — not in your DMs
+              The day's schedule, kept to one standard
             </h2>
             <ul className="mt-8 space-y-4">
               {[
-                "Every booking lands in your dashboard the moment it's made",
-                "Confirm walk-ins in one tap when the client sits down",
-                "No-shows are flagged so clients get a rebook nudge",
+                "Every appointment reaches your dashboard the moment it is made",
+                "Confirm a client with a single tap as they take the chair",
+                "Mark a no-show and the client is invited to rebook",
               ].map((line) => (
                 <li key={line} className="flex items-start gap-3">
                   <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
@@ -327,7 +329,7 @@ export default function Landing() {
             </ul>
             <Button asChild size="lg" className="mt-8 rounded-full px-7">
               <Link to="/dashboard">
-                Open the barber dashboard
+                Enter the barber dashboard
                 <ArrowRight className="ml-1.5 size-4" />
               </Link>
             </Button>
@@ -348,15 +350,15 @@ export default function Landing() {
                     variant="outline"
                     className="rounded-full border-primary/25 text-primary"
                   >
-                    5 bookings
+                    Five appointments
                   </Badge>
                 </div>
                 <div className="mt-4 space-y-2.5">
                   {[
                     { t: "09:30", n: "Marco D.", s: "Signature Cut", ok: true },
                     { t: "11:00", n: "Amine K.", s: "Beard Trim", ok: true },
-                    { t: "13:30", n: "Sofia R.", s: "Cut + Beard", ok: false },
-                    { t: "16:00", n: "Louis P.", s: "Kids Cut", ok: false },
+                    { t: "13:30", n: "Sofia R.", s: "Cut & Beard", ok: false },
+                    { t: "16:00", n: "Louis P.", s: "Junior Cut", ok: false },
                   ].map((r) => (
                     <div
                       key={r.t}
@@ -394,10 +396,11 @@ export default function Landing() {
       <section className="border-t border-border/60">
         <div className="mx-auto w-full max-w-6xl px-4 py-24 text-center sm:px-6">
           <h2 className="mx-auto max-w-2xl font-serif text-3xl font-semibold tracking-tight text-balance sm:text-5xl">
-            The chair is waiting. The clock is running.
+            Your appointment, arranged with the care it deserves
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-            Book in under a minute — no account, no app, no phone tag.
+            Reserve your chair in under a minute — no account required, no
+            waiting on a callback.
           </p>
           <Button asChild size="lg" className="mt-8 rounded-full px-8">
             <Link to="/book">

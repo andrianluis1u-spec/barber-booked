@@ -185,10 +185,11 @@ export default function Book() {
         {step === 1 && (
           <section>
             <h1 className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
-              What are we doing today?
+              Select your service
             </h1>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              Pick a service to continue.
+              Every service begins with a short consultation. Choose the one
+              that suits you to continue.
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               {SERVICES.map((s) => (
@@ -231,10 +232,11 @@ export default function Book() {
         {step === 2 && (
           <section>
             <h1 className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
-              When works for you?
+              Choose a date and time
             </h1>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              Live availability — taken slots are greyed out.
+              Availability is shown in real time — reserved times are already
+              set aside and cannot be chosen.
             </p>
 
             {/* Date strip */}
@@ -287,7 +289,8 @@ export default function Book() {
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {slots.filter((s) => !s.disabled).length} open slots
+                        {slots.filter((s) => !s.disabled).length} times
+                        available
                       </p>
                     </div>
                     <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -333,11 +336,11 @@ export default function Book() {
         {step === 3 && (
           <section>
             <h1 className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
-              Almost done — your details
+              Your details
             </h1>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              The barber gets your booking instantly; your number is only used
-              for reminders.
+              The barber receives your appointment immediately. Your phone
+              number is kept for appointment reminders only.
             </p>
             <Card className="card-soft mt-6 rounded-2xl">
               <CardContent className="space-y-4 p-6">
@@ -432,11 +435,11 @@ export default function Book() {
                 {submitting ? (
                   <>
                     <Loader2 className="mr-1.5 size-4 animate-spin" />
-                    Booking…
+                    Reserving…
                   </>
                 ) : (
                   <>
-                    Confirm booking <ArrowRight className="ml-1.5 size-4" />
+                    Confirm appointment <ArrowRight className="ml-1.5 size-4" />
                   </>
                 )}
               </Button>
@@ -456,7 +459,8 @@ export default function Book() {
               <Check className="size-8 text-primary" />
             </motion.div>
             <h1 className="mt-6 font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
-              You're booked{name.trim() ? `, ${name.trim().split(" ")[0]}` : ""}!
+              Your appointment is confirmed
+              {name.trim() ? `, ${name.trim().split(" ")[0]}` : ""}.
             </h1>
             {service && dateKey && slot !== null && (
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
@@ -464,15 +468,15 @@ export default function Book() {
                 <span className="font-medium text-foreground">
                   {format(new Date(dateKey + "T12:00:00"), "EEEE d MMM")}
                 </span>{" "}
-                at {startAtToSlot(slot)}. The barber has your booking, and
-                you'll get a reminder an hour before.
+                at {startAtToSlot(slot)}. The barber has been notified, and a
+                reminder will reach you an hour before your time.
               </p>
             )}
             <div className="mt-8 flex justify-center gap-3">
               <Button asChild variant="outline">
-                <a href="/">Back to home</a>
+                <a href="/">Return home</a>
               </Button>
-              <Button onClick={restart}>Book another</Button>
+              <Button onClick={restart}>Book another appointment</Button>
             </div>
           </section>
         )}
