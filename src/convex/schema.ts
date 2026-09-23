@@ -34,10 +34,31 @@ const schema = defineSchema(
 
     // add other tables here
 
-    // tableName: defineTable({
-    //   ...
-    //   // table fields
-    // }).index("by_field", ["field"])
+    // Bookings created by clients from the public booking flow.
+    // Single-barber shop for v1, so there is no barberId here.
+    // `dateKey` is a local calendar date like "2026-09-24" so slots can be
+    // grouped per day, and `startAt` is the slot start as an epoch-ms number.
+    appointments: defineTable({
+      dateKey: v.string(), // local calendar date, e.g. "2026-09-24"
+      startAt: v.number(), // slot start (epoch ms)
+      endAt: v.number(), // slot end (epoch ms)
+      clientName: v.string(),
+      clientPhone: v.string(), // phone number is the essential piece
+      serviceName: v.string(),
+      notes: v.optional(v.string()),
+      // pending  -> waiting for the barber to decide
+      // confirmed -> barber confirmed the client showed up
+      // noShow    -> barber marked the client as a no-show
+      // cancelled -> client cancelled (kept for the audit trail)
+      status: v.union(
+        v.literal("pending"),
+        v.literal("confirmed"),
+        v.literal("noShow"),
+        v.literal("cancelled"),
+      ),
+    })
+      .index("by_date", ["dateKey"])
+      .index("by_status", ["status"]),
   },
   {
     schemaValidation: false,
