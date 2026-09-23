@@ -1,3 +1,4 @@
+import { useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
@@ -5,6 +6,7 @@ import {
   CalendarDays,
   Check,
   Clock,
+  Link2,
   MessageSquareText,
   Scissors,
   ShieldCheck,
@@ -12,15 +14,12 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Link } from "react-router";
+import { api } from "@/convex/_generated/api";
 import logo from "@/assets/logo.svg";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  BARBER_CITY,
-  BARBER_NAME,
-  SERVICES,
-} from "@/lib/booking";
+import { SERVICES } from "@/lib/booking";
 
 const STEPS = [
   {
@@ -47,6 +46,8 @@ const fadeUp = {
 };
 
 export default function Landing() {
+  const shops = useQuery(api.barbers.listAll, {});
+
   return (
     <div className="page-glow min-h-screen">
       {/* ── Header ─────────────────────────────────────────────── */}
@@ -62,8 +63,8 @@ export default function Landing() {
             <a className="transition-colors hover:text-foreground" href="#how">
               How it works
             </a>
-            <a className="transition-colors hover:text-foreground" href="#services">
-              Services
+            <a className="transition-colors hover:text-foreground" href="#shops">
+              Shops
             </a>
             <a className="transition-colors hover:text-foreground" href="#barber">
               For the barber
@@ -102,7 +103,7 @@ export default function Landing() {
                 className="mb-5 gap-1.5 rounded-full border-primary/25 bg-primary/5 px-3 py-1 text-primary"
               >
                 <Sparkles className="size-3.5" />
-                Appointment booking · {BARBER_NAME}, {BARBER_CITY}
+                The booking platform for barbershops
               </Badge>
             </motion.div>
             <motion.h1
@@ -111,9 +112,8 @@ export default function Landing() {
               transition={{ duration: 0.55, delay: 0.08 }}
               className="font-serif text-4xl font-semibold leading-[1.08] tracking-tight text-balance sm:text-5xl lg:text-6xl"
             >
-              A properly kept{" "}
-              <span className="text-primary">appointment</span>, every
-              single time.
+              Every barber gets a booking{" "}
+              <span className="text-primary">link of their own</span>.
             </motion.h1>
             <motion.p
               initial={{ opacity: 0, y: 20 }}
@@ -121,10 +121,10 @@ export default function Landing() {
               transition={{ duration: 0.55, delay: 0.16 }}
               className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8"
             >
-              Barber Booked is the appointment desk for a modern barbershop:
-              clients reserve a chair in under a minute, the barber sees every
-              booking the moment it is made, and reminders make sure no time —
-              or client — is left waiting.
+              Barber Booked gives each barbershop its own page and a unique
+              link to share. Clients reserve a chair in under a minute, the
+              barber watches bookings arrive live, and every client is texted a
+              reminder an hour before their time.
             </motion.p>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -133,8 +133,8 @@ export default function Landing() {
               className="mt-8 flex flex-wrap items-center gap-3"
             >
               <Button asChild size="lg" className="rounded-full px-7">
-                <Link to="/book">
-                  Book an appointment
+                <Link to="/dashboard">
+                  Claim your booking link
                   <ArrowRight className="ml-1.5 size-4" />
                 </Link>
               </Button>
@@ -144,7 +144,7 @@ export default function Landing() {
                 variant="outline"
                 className="rounded-full px-7"
               >
-                <Link to="/dashboard">Barber access</Link>
+                <Link to="#shops">Browse the shops</Link>
               </Button>
             </motion.div>
             <motion.p
@@ -203,7 +203,7 @@ export default function Landing() {
                   ))}
                 </div>
                 <Button asChild className="mt-5 w-full rounded-full">
-                  <Link to="/book">Reserve this sitting</Link>
+                  <Link to="/dashboard">Reserve this sitting</Link>
                 </Button>
               </CardContent>
             </Card>
@@ -253,21 +253,83 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Services ───────────────────────────────────────────── */}
-      <section id="services" className="border-t border-border/60">
+      {/* ── Shop directory ────────────────────────────────────────── */}
+      <section id="shops" className="border-t border-border/60">
         <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="max-w-2xl">
               <p className="text-sm font-medium uppercase tracking-wider text-primary">
-                Services
+                On the platform
               </p>
               <h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
-                A short menu, executed properly
+                Shops taking bookings today
+              </h2>
+            </div>
+          </div>
+          {shops === undefined ? (
+            <p className="mt-10 text-sm text-muted-foreground">Loading shops…</p>
+          ) : shops.length === 0 ? (
+            <p className="mt-10 max-w-2xl text-sm leading-6 text-muted-foreground">
+              The first shops are setting up their pages now. Claim your link
+              and be among them.
+            </p>
+          ) : (
+            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {shops.map((shop, i) => (
+                <motion.div
+                  key={shop._id}
+                  {...fadeUp}
+                  transition={{ duration: 0.45, delay: i * 0.06 }}
+                >
+                  <Link to={`/b/${shop.slug}`} className="block h-full">
+                    <Card className="card-soft group h-full rounded-2xl border-border/70 transition-colors hover:border-primary/40">
+                      <CardContent className="p-5">
+                        <div className="flex items-center gap-3">
+                          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 font-serif text-base font-semibold text-primary">
+                            {shop.shopName.slice(0, 1)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold">
+                              {shop.shopName}
+                            </p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {shop.city}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-4 flex items-center justify-between">
+                          <span className="truncate font-mono text-xs text-muted-foreground">
+                            /b/{shop.slug}
+                          </span>
+                          <span className="ml-3 inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary">
+                            Book
+                            <ArrowRight className="size-3" />
+                          </span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── For clients ────────────────────────────────────────── */}
+      <section id="services" className="border-t border-border/60">
+        <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="max-w-2xl">                <p className="text-sm font-medium uppercase tracking-wider text-primary">
+                For clients
+              </p>
+              <h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
+                The standard menu, ready on every shop page
               </h2>
             </div>
             <Button asChild variant="outline" className="rounded-full">
-              <Link to="/book">
-                Book any of these
+              <Link to="#shops">
+                Find a shop to book
                 <ArrowRight className="ml-1.5 size-4" />
               </Link>
             </Button>
@@ -329,7 +391,7 @@ export default function Landing() {
             </ul>
             <Button asChild size="lg" className="mt-8 rounded-full px-7">
               <Link to="/dashboard">
-                Enter the barber dashboard
+                Claim your booking link
                 <ArrowRight className="ml-1.5 size-4" />
               </Link>
             </Button>
@@ -396,15 +458,14 @@ export default function Landing() {
       <section className="border-t border-border/60">
         <div className="mx-auto w-full max-w-6xl px-4 py-24 text-center sm:px-6">
           <h2 className="mx-auto max-w-2xl font-serif text-3xl font-semibold tracking-tight text-balance sm:text-5xl">
-            Your appointment, arranged with the care it deserves
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-            Reserve your chair in under a minute — no account required, no
-            waiting on a callback.
+            Your link. Your chairs. Fully booked.
+          </h2>            <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
+            Set up your booking page in minutes and share it with every client
+            — reminders, confirmations and no-show tracking included.
           </p>
           <Button asChild size="lg" className="mt-8 rounded-full px-8">
-            <Link to="/book">
-              Book your appointment
+            <Link to="/dashboard">
+              Claim your booking link
               <ArrowRight className="ml-1.5 size-4" />
             </Link>
           </Button>
@@ -414,10 +475,9 @@ export default function Landing() {
       {/* ── Footer ─────────────────────────────────────────────── */}
       <footer className="border-t border-border/60 py-8">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 text-sm text-muted-foreground sm:px-6">
-          <p>© {new Date().getFullYear()} {BARBER_NAME} · {BARBER_CITY}</p>
+          <p>© {new Date().getFullYear()} Barber Booked · All rights reserved</p>
           <p>
-            Booking powered by{" "}
-            <span className="font-medium text-foreground">Barber Booked</span>
+            The appointment platform for modern barbershops
           </p>
         </div>
       </footer>

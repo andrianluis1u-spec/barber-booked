@@ -44,9 +44,6 @@ export const SERVICES: Service[] = [
   },
 ];
 
-export const BARBER_NAME = "Fade Room Studio";
-export const BARBER_CITY = "Downtown";
-
 /** Epoch-ms start -> local "HH:mm" label used across the app. */
 export function startAtToSlot(startAt: number): string {
   return format(new Date(startAt), "HH:mm");

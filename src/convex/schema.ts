@@ -34,11 +34,32 @@ const schema = defineSchema(
 
     // add other tables here
 
-    // Bookings created by clients from the public booking flow.
-    // Single-barber shop for v1, so there is no barberId here.
+    // Shops (one per barber). `slug` powers the unique public booking link
+    // (/b/<slug>) and is unique.
+    barbers: defineTable({
+      ownerUserId: v.id("users"),
+      shopName: v.string(),
+      city: v.string(),
+      slug: v.string(),
+      ownerPhone: v.optional(v.string()),
+      services: v.optional(
+        v.array(
+          v.object({
+            id: v.string(),
+            name: v.string(),
+            price: v.number(),
+            minutes: v.number(),
+            blurb: v.string(),
+          }),
+        ),
+      ),
+    }).index("by_slug", ["slug"]).index("by_owner", ["ownerUserId"]),
+
+    // Bookings created by clients from a barber's unique booking link.
     // `dateKey` is a local calendar date like "2026-09-24" so slots can be
     // grouped per day, and `startAt` is the slot start as an epoch-ms number.
     appointments: defineTable({
+      barberId: v.id("barbers"),
       dateKey: v.string(), // local calendar date, e.g. "2026-09-24"
       startAt: v.number(), // slot start (epoch ms)
       endAt: v.number(), // slot end (epoch ms)
@@ -75,7 +96,7 @@ const schema = defineSchema(
         v.literal("cancelled"),
       ),
     })
-      .index("by_date", ["dateKey"])
+      .index("by_barber_and_date", ["barberId", "dateKey"])
       .index("by_status", ["status"])
       .index("by_reminder_status", ["reminderStatus"]),
   },

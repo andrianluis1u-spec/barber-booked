@@ -2,7 +2,6 @@ import { v } from "convex/values";
 import { internalAction, internalQuery, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import axios from "axios";
-import { BARBER_NAME } from "../lib/booking";
 
 /**
  * Sends the 1-hour reminder SMS to the client's phone number.
@@ -32,6 +31,12 @@ export const sendReminder = internalAction({
       id: appointmentId,
     });
     if (!appt) return;
+
+    // Personalise the message with the client's own barbershop name.
+    const shop = await ctx.runQuery(internal.reminders.getShop, {
+      id: appt.barberId,
+    });
+    const shopName = shop?.shopName ?? "your barbershop";
 
     // Only remind clients whose appointment is still happening.
     if (
@@ -64,7 +69,7 @@ export const sendReminder = internalAction({
     });
 
     const message =
-      `Hi ${appt.clientName}, a reminder from ${BARBER_NAME}: ` +
+      `Hi ${appt.clientName}, a reminder from ${shopName}: ` +
       `your ${appt.serviceName} is coming up on ${dayLabel} at ${timeLabel}. ` +
       `See you soon!`;
 
@@ -99,6 +104,12 @@ export const sendReminder = internalAction({
 /** Internal query used by the action to fetch the appointment. */
 export const getAppointment = internalQuery({
   args: { id: v.id("appointments") },
+  handler: async (ctx, { id }) => ctx.db.get(id),
+});
+
+/** Internal query used by the action to fetch the shop. */
+export const getShop = internalQuery({
+  args: { id: v.id("barbers") },
   handler: async (ctx, { id }) => ctx.db.get(id),
 });
 

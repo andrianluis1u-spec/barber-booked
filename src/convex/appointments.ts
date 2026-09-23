@@ -3,22 +3,48 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { SLOT_MINUTES, isValidPhone } from "../lib/booking";
+import type { Id } from "./_generated/dataModel";
 
-/** Public (no auth): slot start times (epoch ms) already booked for a date. */
+/** Look up the signed-in user's shop, or null. */
+async function findMyShop(ctx: any, userId: Id<"users">) {
+  return ctx.db
+    .query("barbers")
+    .withIndex("by_owner", (q: any) => q.eq("ownerUserId", userId))
+    .unique();
+}
+
+/** Ensure the appointment belongs to the signed-in barber's shop. */
+async function requireOwnership(
+  ctx: any,
+  userId: Id<"users">,
+  barberId: Id<"barbers">,
+) {
+  const shop = await findMyShop(ctx, userId);
+  if (!shop || shop._id !== barberId) {
+    throw new Error("Not found.");
+  }
+}
+
+/** Public: slot starts already booked for one shop on one date. */
 export const takenSlots = query({
-  args: { dateKey: v.string() },
-  handler: async (ctx, { dateKey }) => {
+  args: { barberId: v.id("barbers"), dateKey: v.string() },
+  handler: async (ctx, { barberId, dateKey }) => {
     const rows = await ctx.db
       .query("appointments")
-      .withIndex("by_date", (q) => q.eq("dateKey", dateKey))
+      .withIndex("by_barber_and_date", (q) =>
+        q.eq("barberId", barberId).eq("dateKey", dateKey),
+      )
       .collect();
-    return rows.filter((r) => r.status !== "cancelled").map((r) => r.startAt);
+    return rows
+      .filter((r) => r.status !== "cancelled")
+      .map((r) => r.startAt);
   },
 });
 
-/** Public (no auth): create a booking from the client booking form. */
+/** Public: create a booking at a specific shop. */
 export const createBooking = mutation({
   args: {
+    barberId: v.id("barbers"),
     dateKey: v.string(),
     startAt: v.number(),
     serviceName: v.string(),
@@ -32,19 +58,25 @@ export const createBooking = mutation({
       throw new Error("Please enter a valid phone number.");
     }
 
-    // Avoid double-booking the exact same slot.
+    const shop = await ctx.db.get(args.barberId);
+    if (!shop) throw new Error("This shop does not exist.");
+
+    // Avoid double-booking the same slot at this shop.
     const rows = await ctx.db
       .query("appointments")
-      .withIndex("by_date", (q) => q.eq("dateKey", args.dateKey))
+      .withIndex("by_barber_and_date", (q) =>
+        q.eq("barberId", args.barberId).eq("dateKey", args.dateKey),
+      )
       .collect();
     const clash = rows.some(
       (r) => r.status !== "cancelled" && r.startAt === args.startAt,
     );
     if (clash) {
-      throw new Error("Sorry — that slot was just taken. Pick another time.");
+      throw new Error("Sorry — that time was just reserved. Choose another.");
     }
 
     const id = await ctx.db.insert("appointments", {
+      barberId: args.barberId,
       dateKey: args.dateKey,
       startAt: args.startAt,
       endAt: args.startAt + SLOT_MINUTES * 60 * 1000,
@@ -57,8 +89,7 @@ export const createBooking = mutation({
       reminderStatus: "scheduled",
     });
 
-    // Fire the client's reminder one hour before the slot starts (or, if the
-    // hour mark already passed, a few seconds from now).
+    // Fire the client's reminder one hour before the slot starts.
     const fireAt = Math.max(args.startAt - 60 * 60 * 1000, Date.now() + 5_000);
     const jobId = await ctx.scheduler.runAt(
       fireAt,
@@ -71,41 +102,51 @@ export const createBooking = mutation({
   },
 });
 
-/** Signed-in barber: every appointment for one calendar date. */
+/** Barber-scoped: my shop's appointments for one date. */
 export const byDay = query({
   args: { dateKey: v.string() },
   handler: async (ctx, { dateKey }) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) return [];
+    const shop = await findMyShop(ctx, userId);
+    if (!shop) return [];
     const rows = await ctx.db
       .query("appointments")
-      .withIndex("by_date", (q) => q.eq("dateKey", dateKey))
+      .withIndex("by_barber_and_date", (q) =>
+        q.eq("barberId", shop._id).eq("dateKey", dateKey),
+      )
       .collect();
     return rows.sort((a, b) => a.startAt - b.startAt);
   },
 });
 
-/** Signed-in barber: mark a booking as confirmed (client showed up). */
+/** Barber-scoped: mark a booking as confirmed (client showed up). */
 export const confirm = mutation({
   args: { id: v.id("appointments") },
   handler: async (ctx, { id }) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Not signed in.");
+    const appt = await ctx.db.get(id);
+    if (!appt) throw new Error("Not found.");
+    await requireOwnership(ctx, userId, appt.barberId);
     await ctx.db.patch(id, { status: "confirmed" });
   },
 });
 
-/** Signed-in barber: no-show — client gets nudged to rebook. */
+/** Barber-scoped: no-show — client would be invited to rebook. */
 export const markNoShow = mutation({
   args: { id: v.id("appointments") },
   handler: async (ctx, { id }) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Not signed in.");
+    const appt = await ctx.db.get(id);
+    if (!appt) throw new Error("Not found.");
+    await requireOwnership(ctx, userId, appt.barberId);
     await ctx.db.patch(id, { status: "noShow" });
   },
 });
 
-/** Signed-in barber: cancel a booking (frees the slot + cancels the reminder). */
+/** Barber-scoped: cancel a booking (frees the slot + cancels the reminder). */
 export const cancel = mutation({
   args: { id: v.id("appointments") },
   handler: async (ctx, { id }) => {
@@ -113,27 +154,18 @@ export const cancel = mutation({
     if (userId === null) throw new Error("Not signed in.");
     const appt = await ctx.db.get(id);
     if (!appt) throw new Error("Not found.");
-    // Stop the scheduled reminder if it hasn't run yet.
+    await requireOwnership(ctx, userId, appt.barberId);
+    // Stop the scheduled reminder if it has not run yet.
     if (appt.reminderStatus === "scheduled" && appt.reminderJobId) {
       try {
         await ctx.scheduler.cancel(appt.reminderJobId);
       } catch {
-        // Job may have already fired; the reminder guard below handles that.
+        // Already fired — the reminder's own guard handles this case.
       }
-  }
+    }
     await ctx.db.patch(id, {
       status: "cancelled",
       reminderStatus: "cancelled",
     });
-  },
-});
-
-/** Public: lightweight count of active bookings (landing page social proof). */
-export const publicStats = query({
-  args: {},
-  handler: async (ctx) => {
-    const all = await ctx.db.query("appointments").collect();
-    const active = all.filter((a) => a.status !== "cancelled");
-    return { total: active.length };
   },
 });

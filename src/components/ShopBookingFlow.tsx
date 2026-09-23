@@ -7,6 +7,7 @@ import {
   Check,
   Clock,
   Loader2,
+  MapPin,
   Phone,
   Scissors,
   User,
@@ -14,6 +15,7 @@ import {
 import { motion } from "framer-motion";
 import { useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,9 +24,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import logo from "@/assets/logo.svg";
 import {
-  BARBER_CITY,
-  BARBER_NAME,
-  SERVICES,
   SLOT_MINUTES,
   isValidPhone,
   startAtToSlot,
@@ -38,9 +37,17 @@ type Step = 1 | 2 | 3 | 4;
 const OPEN_MIN = 9 * 60; // 09:00
 const CLOSE_MIN = 20 * 60; // 20:00
 
-export default function Book() {
+/**
+ * The full client booking flow for one shop: service → date & time → details
+ * → confirmation. Reused by the unique per-barber page at /b/<slug>.
+ */
+export default function ShopBookingFlow({
+  shop,
+}: {
+  shop: Doc<"barbers">;
+}) {
   const [step, setStep] = useState<Step>(1);
-  const [serviceId, setServiceId] = useState<ServiceId | null>(null);
+  const [serviceId, setServiceId] = useState<string | null>(null);
   const [dateKey, setDateKey] = useState<string | null>(null);
   const [slot, setSlot] = useState<number | null>(null); // epoch ms
   const [name, setName] = useState("");
@@ -49,11 +56,12 @@ export default function Book() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const service = SERVICES.find((s) => s.id === serviceId) ?? null;
+  const services = shop.services ?? [];
+  const service = services.find((s) => s.id === serviceId) ?? null;
 
   const taken = useQuery(
     api.appointments.takenSlots,
-    dateKey ? { dateKey } : "skip",
+    dateKey ? { barberId: shop._id, dateKey } : "skip",
   );
 
   // Next 14 days as a horizontal strip.
@@ -100,6 +108,7 @@ export default function Book() {
     setError(null);
     try {
       await createBooking({
+        barberId: shop._id,
         dateKey,
         startAt: slot,
         serviceName: service.name,
@@ -132,17 +141,26 @@ export default function Book() {
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between px-4 sm:px-6">
-          <a href="/" className="flex items-center gap-2.5">
-            <img src={logo} alt="" className="size-8 rounded-lg" />
-            <span className="text-[15px] font-semibold tracking-tight">
-              Barber Booked
-            </span>
-          </a>
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 font-serif text-base font-semibold text-primary">
+              {shop.shopName.slice(0, 1)}
+            </div>
+            <div>
+              <p className="text-[15px] font-semibold leading-tight tracking-tight">
+                {shop.shopName}
+              </p>
+              <p className="flex items-center gap-1 text-xs leading-tight text-muted-foreground">
+                <MapPin className="size-3" />
+                {shop.city}
+              </p>
+            </div>
+          </div>
           <Badge
             variant="outline"
             className="rounded-full border-primary/25 text-primary"
           >
-            {BARBER_NAME} · {BARBER_CITY}
+            <img src={logo} alt="" className="size-3.5 rounded-sm" />
+            Powered by Barber Booked
           </Badge>
         </div>
       </header>
@@ -189,16 +207,16 @@ export default function Book() {
               Select your service
             </h1>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              Every service begins with a short consultation. Choose the one
-              that suits you to continue.
+              Every service at {shop.shopName} begins with a short
+              consultation. Choose the one that suits you to continue.
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              {SERVICES.map((s) => (
+              {services.map((s) => (
                 <button
                   key={s.id}
                   type="button"
                   onClick={() => {
-                    setServiceId(s.id);
+                    setServiceId(s.id as ServiceId);
                     setStep(2);
                   }}
                   className={cn(
@@ -236,8 +254,8 @@ export default function Book() {
               Choose a date and time
             </h1>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              Availability is shown in real time — reserved times are already
-              set aside and cannot be chosen.
+              Availability at {shop.shopName} is shown in real time — reserved
+              times cannot be chosen.
             </p>
 
             {/* Date strip */}
@@ -340,8 +358,8 @@ export default function Book() {
               Your details
             </h1>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              The barber receives your appointment immediately. Your phone
-              number is kept for appointment reminders only.
+              {shop.shopName} receives your appointment immediately. Your
+              phone number is kept for appointment reminders only.
             </p>
             <Card className="card-soft mt-6 rounded-2xl">
               <CardContent className="space-y-4 p-6">
@@ -465,7 +483,7 @@ export default function Book() {
             </h1>
             {service && dateKey && slot !== null && (
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                {service.name} ·{" "}
+                {service.name} at {shop.shopName} ·{" "}
                 <span className="font-medium text-foreground">
                   {format(new Date(dateKey + "T12:00:00"), "EEEE d MMM")}
                 </span>{" "}
@@ -474,10 +492,9 @@ export default function Book() {
               </p>
             )}
             <div className="mt-8 flex justify-center gap-3">
-              <Button asChild variant="outline">
-                <a href="/">Return home</a>
+              <Button onClick={restart} variant="outline">
+                Book another appointment
               </Button>
-              <Button onClick={restart}>Book another appointment</Button>
             </div>
           </section>
         )}
