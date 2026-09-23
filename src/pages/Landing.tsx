@@ -314,8 +314,8 @@ export default function Landing() {
             <ul className="mt-8 space-y-4">
               {[
                 "Every appointment reaches your dashboard the moment it is made",
+                "Clients are texted a reminder one hour before their time",
                 "Confirm a client with a single tap as they take the chair",
-                "Mark a no-show and the client is invited to rebook",
               ].map((line) => (
                 <li key={line} className="flex items-start gap-3">
                   <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10">

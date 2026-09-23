@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { SLOT_MINUTES, isValidPhone } from "../lib/booking";
 
 /** Public (no auth): slot start times (epoch ms) already booked for a date. */
@@ -23,6 +24,7 @@ export const createBooking = mutation({
     serviceName: v.string(),
     clientName: v.string(),
     clientPhone: v.string(),
+    clientUtcOffset: v.optional(v.number()),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -48,10 +50,23 @@ export const createBooking = mutation({
       endAt: args.startAt + SLOT_MINUTES * 60 * 1000,
       clientName: args.clientName.trim(),
       clientPhone: args.clientPhone.trim(),
+      clientUtcOffset: args.clientUtcOffset,
       serviceName: args.serviceName,
       notes: args.notes?.trim() || undefined,
       status: "pending",
+      reminderStatus: "scheduled",
     });
+
+    // Fire the client's reminder one hour before the slot starts (or, if the
+    // hour mark already passed, a few seconds from now).
+    const fireAt = Math.max(args.startAt - 60 * 60 * 1000, Date.now() + 5_000);
+    const jobId = await ctx.scheduler.runAt(
+      fireAt,
+      internal.reminders.sendReminder,
+      { appointmentId: id },
+    );
+    await ctx.db.patch(id, { reminderJobId: jobId });
+
     return id;
   },
 });
@@ -90,13 +105,26 @@ export const markNoShow = mutation({
   },
 });
 
-/** Signed-in barber: cancel a booking (frees the slot). */
+/** Signed-in barber: cancel a booking (frees the slot + cancels the reminder). */
 export const cancel = mutation({
   args: { id: v.id("appointments") },
   handler: async (ctx, { id }) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Not signed in.");
-    await ctx.db.patch(id, { status: "cancelled" });
+    const appt = await ctx.db.get(id);
+    if (!appt) throw new Error("Not found.");
+    // Stop the scheduled reminder if it hasn't run yet.
+    if (appt.reminderStatus === "scheduled" && appt.reminderJobId) {
+      try {
+        await ctx.scheduler.cancel(appt.reminderJobId);
+      } catch {
+        // Job may have already fired; the reminder guard below handles that.
+      }
+  }
+    await ctx.db.patch(id, {
+      status: "cancelled",
+      reminderStatus: "cancelled",
+    });
   },
 });
 

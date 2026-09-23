@@ -105,6 +105,7 @@ export default function Book() {
         serviceName: service.name,
         clientName: name.trim(),
         clientPhone: phone.trim(),
+        clientUtcOffset: new Date().getTimezoneOffset(),
         notes: notes.trim() || undefined,
       });
       setStep(4);

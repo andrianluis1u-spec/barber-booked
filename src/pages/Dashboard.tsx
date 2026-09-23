@@ -9,6 +9,7 @@ import {
   ArrowRight,
   CalendarDays,
   Check,
+  Clock,
   LogOut,
   Scissors,
   UserX,
@@ -24,6 +25,26 @@ import { BARBER_NAME, startAtToSlot, toDateKey } from "@/lib/booking";
 import { cn } from "@/lib/utils";
 
 type ApptStatus = "pending" | "confirmed" | "noShow" | "cancelled";
+type ReminderStatus = "scheduled" | "sending" | "sent" | "failed" | "cancelled" | undefined;
+
+const REMINDER_STYLE: Record<string, { label: string; className: string }> = {
+  scheduled: {
+    label: "Reminder scheduled",
+    className: "bg-primary/10 text-primary",
+  },
+  sending: {
+    label: "Reminder sending",
+    className: "bg-primary/10 text-primary",
+  },
+  sent: {
+    label: "Reminder sent",
+    className: "bg-primary/10 text-primary",
+  },
+  failed: {
+    label: "Reminder failed",
+    className: "bg-destructive/10 text-destructive",
+  },
+};
 
 const STATUS_STYLE: Record<
   ApptStatus,
@@ -234,6 +255,20 @@ export default function Dashboard() {
                         {appt.serviceName} · {appt.clientPhone}
                         {appt.notes ? ` · “${appt.notes}”` : ""}
                       </p>
+                      {appt.reminderStatus &&
+                        appt.reminderStatus !== "cancelled" && (
+                          <p
+                            className={cn(
+                              "mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                              REMINDER_STYLE[appt.reminderStatus]?.className,
+                            )}
+                          >
+                            <Clock className="size-3" />
+                            {
+                              REMINDER_STYLE[appt.reminderStatus]?.label
+                            }
+                          </p>
+                        )}
                     </div>
                     {appt.status !== "cancelled" && (
                       <div className="flex w-full gap-2 sm:w-auto">
@@ -275,8 +310,8 @@ export default function Dashboard() {
         </div>
 
         <p className="mt-10 text-center text-xs text-muted-foreground">
-          Reminder messages and rebooking invitations arrive with the next
-          release. Appointments booked on{" "}
+          Clients are texted automatically one hour before their appointment.
+          Appointments booked on{" "}
           <span className="font-medium text-foreground">/book</span> appear
           here in real time.
         </p>

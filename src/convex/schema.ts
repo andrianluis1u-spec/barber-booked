@@ -46,6 +46,24 @@ const schema = defineSchema(
       clientPhone: v.string(), // phone number is the essential piece
       serviceName: v.string(),
       notes: v.optional(v.string()),
+      // Client's UTC offset at booking time (getTimezoneOffset(), in minutes),
+      // so reminder messages can show the appointment time in local clock time.
+      clientUtcOffset: v.optional(v.number()),
+      // Reminder lifecycle: scheduled -> sending -> sent | failed,
+      // or cancelled when the appointment itself is cancelled.
+      reminderStatus: v.optional(
+        v.union(
+          v.literal("scheduled"),
+          v.literal("sending"),
+          v.literal("sent"),
+          v.literal("failed"),
+          v.literal("cancelled"),
+        ),
+      ),
+      reminderSentAt: v.optional(v.number()),
+      // Convex scheduled-function job id, so a cancelled appointment can stop
+      // its reminder before it fires.
+      reminderJobId: v.optional(v.id("_scheduled_functions")),
       // pending  -> waiting for the barber to decide
       // confirmed -> barber confirmed the client showed up
       // noShow    -> barber marked the client as a no-show
@@ -58,7 +76,8 @@ const schema = defineSchema(
       ),
     })
       .index("by_date", ["dateKey"])
-      .index("by_status", ["status"]),
+      .index("by_status", ["status"])
+      .index("by_reminder_status", ["reminderStatus"]),
   },
   {
     schemaValidation: false,
