@@ -65,6 +65,19 @@ const schema = defineSchema(
       mapsUrl: v.optional(v.string()),
       publicPhone: v.optional(v.string()),
       instagramUrl: v.optional(v.string()),
+      // ── Page & booking customisation (all optional, barber-controlled).
+      // Accent color for the public booking page, as a hex string like
+      // "#1F4235". Falls back to the platform default when unset.
+      accentColor: v.optional(v.string()),
+      // Slot length in minutes (15/30/45/60). Default 30.
+      slotMinutes: v.optional(v.number()),
+      // Opening hours in shop-local minutes-from-midnight. Default 9–20.
+      openHour: v.optional(v.number()),
+      closeHour: v.optional(v.number()),
+      // Closed weekdays, 0=Sunday … 6=Saturday.
+      closedWeekdays: v.optional(v.array(v.number())),
+      // How far ahead clients can book, in days (7/14/30/60). Default 14.
+      bookingWindowDays: v.optional(v.number()),
     }).index("by_slug", ["slug"]).index("by_owner", ["ownerUserId"]),
 
     // Bookings created by clients from a barber's unique booking link.

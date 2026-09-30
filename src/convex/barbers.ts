@@ -143,6 +143,92 @@ export const updateProfile = mutation({
 });
 
 /**
+ * Signed-in barber: update page & booking customisation for the public
+ * booking page — accent color, slot length, opening hours, closed days and
+ * how far ahead clients can book.
+ */
+export const updateBookingSettings = mutation({
+  args: {
+    accentColor: v.optional(v.union(v.string(), v.null())),
+    slotMinutes: v.optional(v.number()),
+    openHour: v.optional(v.number()),
+    closeHour: v.optional(v.number()),
+    closedWeekdays: v.optional(v.array(v.number())),
+    bookingWindowDays: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in.");
+    const shop = await ctx.db
+      .query("barbers")
+      .withIndex("by_owner", (q) => q.eq("ownerUserId", userId))
+      .unique();
+    if (!shop) throw new Error("Create your shop profile first.");
+
+    const patch: Record<string, unknown> = {};
+
+    if (args.accentColor !== undefined) {
+      let accent: string | undefined;
+      if (args.accentColor) {
+        const m = /^#?([0-9a-fA-F]{6})$/.exec(args.accentColor.trim());
+        if (!m) throw new Error("Accent color must be a hex color like #1F4235.");
+        accent = `#${m[1].toUpperCase()}`;
+      }
+      patch.accentColor = accent; // null/empty resets to platform default
+    }
+
+    if (args.slotMinutes !== undefined) {
+      if (![15, 30, 45, 60].includes(args.slotMinutes)) {
+        throw new Error("Slot length must be 15, 30, 45 or 60 minutes.");
+      }
+      patch.slotMinutes = args.slotMinutes;
+    }
+
+    if (args.openHour !== undefined) {
+      if (!Number.isInteger(args.openHour) || args.openHour < 0 || args.openHour > 23) {
+        throw new Error("Opening hour must be between 0 and 23.");
+      }
+      patch.openHour = args.openHour;
+    }
+
+    if (args.closeHour !== undefined) {
+      if (!Number.isInteger(args.closeHour) || args.closeHour < 1 || args.closeHour > 24) {
+        throw new Error("Closing hour must be between 1 and 24.");
+      }
+      patch.closeHour = args.closeHour;
+    }
+
+    if (args.closedWeekdays !== undefined) {
+      const days = [...new Set(args.closedWeekdays)];
+      if (
+        days.some((d) => !Number.isInteger(d) || d < 0 || d > 6) ||
+        days.length >= 7
+      ) {
+        throw new Error("Pick at least one open day (closed days must be 0–6)."
+        );
+      }
+      patch.closedWeekdays = days.sort((a, b) => a - b);
+    }
+    
+    if (args.bookingWindowDays !== undefined) {
+      if (![7, 14, 30, 60].includes(args.bookingWindowDays)) {
+        throw new Error("Booking window must be 7, 14, 30 or 60 days.");
+      }
+      patch.bookingWindowDays = args.bookingWindowDays;
+    }
+
+    // Cross-check: opening hour must be before closing hour.
+    const openHour = (patch.openHour as number | undefined) ?? shop.openHour;
+    const closeHour = (patch.closeHour as number | undefined) ?? shop.closeHour;
+    if (openHour !== undefined && closeHour !== undefined && openHour >= closeHour) {
+      throw new Error("Opening hour must be before closing hour.");
+    }
+
+    await ctx.db.patch(shop._id, patch);
+  },
+});
+
+/**
  * Signed-in barber: create my shop with a unique link slug. The barber's
  * own mobile number is required — it receives the new-booking alerts and
  * the post-appointment follow-ups.

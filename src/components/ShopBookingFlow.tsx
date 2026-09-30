@@ -27,7 +27,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import logo from "@/assets/logo.svg";
 import {
-  SLOT_MINUTES,
   isValidPhone,
   startAtToSlot,
   toDateKey,
@@ -35,9 +34,6 @@ import {
 import { cn } from "@/lib/utils";
 
 type Step = 1 | 2 | 3;
-
-const OPEN_MIN = 9 * 60; // 09:00
-const CLOSE_MIN = 20 * 60; // 20:00
 
 /**
  * The client booking flow for one shop: date & time → details + SMS consent
@@ -60,6 +56,23 @@ export default function ShopBookingFlow({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Shop customisation with platform defaults.
+  const slotMinutes = shop.slotMinutes ?? 30;
+  const openHour = shop.openHour ?? 9;
+  const closeHour = shop.closeHour ?? 20;
+  const closedDays = shop.closedWeekdays ?? [];
+  const windowDays = shop.bookingWindowDays ?? 14;
+  const accent = shop.accentColor ?? null;
+
+  /** Inline accent overrides — win over the default theme classes. */
+  const accentBg = accent
+    ? { backgroundColor: accent, borderColor: accent, color: "#fff" }
+    : undefined;
+  const accentTint = accent
+    ? { borderColor: `${accent}59`, backgroundColor: `${accent}0D` }
+    : undefined;
+  const accentText = accent ? { color: accent } : undefined;
+
   const taken = useQuery(
     api.appointments.takenSlots,
     dateKey ? { barberId: shop._id, dateKey } : "skip",
@@ -80,41 +93,43 @@ export default function ShopBookingFlow({
       shop.instagramUrl,
   );
 
-  // Next 14 days as a horizontal strip.
+  // Next N days as a horizontal strip (N = the shop's booking window).
   const days = useMemo(() => {
     const out: { key: string; date: Date }[] = [];
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < windowDays; i++) {
       const d = addDays(new Date(), i);
       out.push({ key: toDateKey(d), date: d });
     }
     return out;
-  }, []);
+  }, [windowDays]);
 
-  // All slot start times for the selected day, minus taken & past ones.
+  // All slot starts for the selected day on the shop's own grid, disabled
+  // when overlapping a busy interval, in the past, or on a closed day.
   const slots = useMemo(() => {
     if (!dateKey) return [];
     const now = Date.now();
     const [y, mo, d] = dateKey.split("-").map(Number);
-    const out: { start: number; label: string; disabled: boolean }[] = [];
-    for (let m = OPEN_MIN; m <= CLOSE_MIN; m += SLOT_MINUTES) {
-      const start = new Date(
-        y,
-        mo - 1,
-        d,
-        Math.floor(m / 60),
-        m % 60,
-        0,
-        0,
-      ).getTime();
-      const isTaken = (taken ?? []).includes(start);
+    const dayStart = new Date(y, mo - 1, d, openHour).getTime();
+    const dayEnd = new Date(y, mo - 1, d, closeHour).getTime();
+    const out: {
+      start: number;
+      end: number;
+      label: string;
+      disabled: boolean;
+    }[] = [];
+    const stepMs = slotMinutes * 60_000;
+    for (let t = dayStart; t + stepMs <= dayEnd; t += stepMs) {
+      const end = t + stepMs;
+      const isBusy = (taken ?? []).some((b) => t < b.end && b.start < end);
       out.push({
-        start,
-        label: startAtToSlot(start),
-        disabled: isTaken || start < now,
+        start: t,
+        end,
+        label: startAtToSlot(t),
+        disabled: isBusy || t < now,
       });
     }
     return out;
-  }, [dateKey, taken]);
+  }, [dateKey, taken, slotMinutes, openHour, closeHour]);
 
   const createBooking = useMutation(api.appointments.createBooking);
 
@@ -223,7 +238,7 @@ export default function ShopBookingFlow({
                         href={`tel:${shop.publicPhone.replace(/\s/g, "")}`}
                         className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
                       >
-                        <Phone className="size-3.5" />
+                        <Phone className="size-3.5" style={accentText} />
                         {shop.publicPhone}
                       </a>
                     )}
@@ -295,10 +310,30 @@ export default function ShopBookingFlow({
               times cannot be chosen.
             </p>
 
-            {/* Date strip */}
+            {/* Date strip — closed days are shown but not selectable */}
             <div className="mt-6 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:thin]">
               {days.map(({ key, date }) => {
                 const active = dateKey === key;
+                const closed = closedDays.includes(date.getDay());
+                if (closed) {
+                  return (
+                    <div
+                      key={key}
+                      aria-disabled
+                      className="flex w-16 shrink-0 cursor-not-allowed flex-col items-center gap-0.5 rounded-xl border border-border/50 bg-muted/50 py-2.5 opacity-50"
+                    >
+                      <span className="text-[11px] uppercase tracking-wide opacity-70">
+                        {format(date, "EEE")}
+                      </span>
+                      <span className="text-lg font-semibold">
+                        {format(date, "d")}
+                      </span>
+                      <span className="text-[10px] font-medium uppercase opacity-70">
+                        Closed
+                      </span>
+                    </div>
+                  );
+                }
                 return (
                   <button
                     key={key}
@@ -307,10 +342,13 @@ export default function ShopBookingFlow({
                       setDateKey(key);
                       setSlot(null);
                     }}
+                    style={active ? accentBg : undefined}
                     className={cn(
                       "flex w-16 shrink-0 flex-col items-center gap-0.5 rounded-xl border bg-card py-2.5 transition-colors hover:border-primary/50",
                       active &&
+                        !accent &&
                         "border-primary bg-primary text-primary-foreground ring-2 ring-ring/30 hover:border-primary",
+                      active && accent && "ring-2 ring-ring/30",
                     )}
                   >
                     <span className="text-[11px] uppercase tracking-wide opacity-70">
@@ -356,12 +394,15 @@ export default function ShopBookingFlow({
                           type="button"
                           disabled={s.disabled}
                           onClick={() => setSlot(s.start)}
+                          style={slot === s.start ? accentBg : undefined}
                           className={cn(
                             "rounded-lg border py-2 text-sm font-medium transition-colors hover:border-primary/50",
                             s.disabled &&
                               "cursor-not-allowed opacity-35 hover:border-border",
                             slot === s.start &&
+                              !accent &&
                               "border-primary bg-primary text-primary-foreground ring-2 ring-ring/30 hover:border-primary",
+                            slot === s.start && accent && "ring-2 ring-ring/30",
                           )}
                         >
                           {s.label}
@@ -378,7 +419,11 @@ export default function ShopBookingFlow({
             </div>
 
             <div className="mt-6 flex justify-end">
-              <Button disabled={slot === null} onClick={() => setStep(2)}>
+              <Button
+                disabled={slot === null}
+                onClick={() => setStep(2)}
+                style={accentBg}
+              >
                 Continue <ArrowRight className="ml-1.5 size-4" />
               </Button>
             </div>
@@ -433,12 +478,20 @@ export default function ShopBookingFlow({
                 </div>
 
                 {/* Required SMS consent */}
-                <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/5 p-4">
+                <div
+                  className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/5 p-4"
+                  style={accentTint}
+                >
                   <Checkbox
                     id="sms-consent"
                     checked={consent}
                     onCheckedChange={(v) => setConsent(v === true)}
                     className="mt-0.5"
+                    style={
+                      accent
+                        ? ({ "--primary": accent } as React.CSSProperties)
+                        : undefined
+                    }
                   />
                   <div>
                     <Label
@@ -459,14 +512,17 @@ export default function ShopBookingFlow({
 
             {/* Summary */}
             {dateKey && slot !== null && (
-              <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-primary/25 bg-primary/5 px-5 py-4 text-sm">
+              <div
+                className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-primary/25 bg-primary/5 px-5 py-4 text-sm"
+                style={accentTint}
+              >
                 <span className="flex items-center gap-1.5">
-                  <CalendarDays className="size-4 text-primary" />
+                  <CalendarDays className="size-4 text-primary" style={accentText} />
                   {format(new Date(dateKey + "T12:00:00"), "EEE d MMM")}
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <Clock className="size-4 text-primary" />
-                  {startAtToSlot(slot)} · {SLOT_MINUTES} min
+                  <Clock className="size-4 text-primary" style={accentText} />
+                  {startAtToSlot(slot)} · {slotMinutes} min
                 </span>
               </div>
             )}
@@ -493,6 +549,7 @@ export default function ShopBookingFlow({
                   !isValidPhone(phone) ||
                   !consent
                 }
+                style={accentBg}
               >
                 {submitting ? (
                   <>

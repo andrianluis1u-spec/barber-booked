@@ -10,7 +10,9 @@ import {
   ImageUp,
   Link2,
   LogOut,
+  Palette,
   Phone,
+  RotateCcw,
   Scissors,
   Store,
   Trash2,
@@ -26,8 +28,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
-import { isValidPhone, startAtToSlot, toDateKey } from "@/lib/booking";
+import {
+  ACCENT_COLORS,
+  SLOT_OPTIONS,
+  WINDOW_OPTIONS,
+  WEEKDAY_LABELS,
+  isValidPhone,
+  startAtToSlot,
+  toDateKey,
+} from "@/lib/booking";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -297,6 +314,269 @@ function ShopLinkCard({ slug }: { slug: string }) {
             </>
           )}
         </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Page & booking settings editor — accent color, slot length, opening
+ * hours, closed days and booking window. Saved to the shop document and
+ * enforced server-side on every booking.
+ */
+function BookingSettingsEditor({ shop }: { shop: Doc<"barbers"> }) {
+  const [open, setOpen] = useState(false);
+  const updateBookingSettings = useMutation(api.barbers.updateBookingSettings);
+
+  const [accent, setAccent] = useState(shop.accentColor ?? "");
+  const [slotMinutes, setSlotMinutes] = useState<number>(shop.slotMinutes ?? 30);
+  const [openHour, setOpenHour] = useState<number>(shop.openHour ?? 9);
+  const [closeHour, setCloseHour] = useState<number>(shop.closeHour ?? 20);
+  const [closed, setClosed] = useState<number[]>(shop.closedWeekdays ?? []);
+  const [windowDays, setWindowDays] = useState<number>(
+    shop.bookingWindowDays ?? 14,
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function toggleClosedDay(d: number) {
+    setClosed((prev) =>
+      prev.includes(d)
+        ? prev.filter((x) => x !== d)
+        : prev.length >= 6
+          ? prev // never allow closing all 7 days
+          : [...prev, d],
+    );
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await updateBookingSettings({
+        accentColor: accent.trim() || null,
+        slotMinutes,
+        openHour,
+        closeHour,
+        closedWeekdays: closed,
+        bookingWindowDays: windowDays,
+      });
+      toast.success("Settings saved — your booking page is updated.");
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const hourLabel = (h: number) =>
+    h === 24 ? "12:00 AM" : `${String(h).padStart(2, "0")}:00`;
+
+  return (
+    <Card className="card-soft rounded-2xl border-border/70">
+      <CardContent className="p-4 sm:p-5">
+        <div className="flex items-center gap-4">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Palette className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">Page &amp; booking settings</p>
+            <p className="text-xs text-muted-foreground">
+              {shop.accentColor ? (
+                <span className="inline-flex items-center gap-1.5">
+                  Accent
+                  <span
+                    className="inline-block size-3 rounded-full border"
+                    style={{ backgroundColor: shop.accentColor }}
+                  />
+                  {shop.accentColor} · {shop.slotMinutes ?? 30} min slots ·{" "}
+                  {String(shop.openHour ?? 9).padStart(2, "0")}:00–
+                  {String(shop.closeHour ?? 20).padStart(2, "0")}:00
+                  {(shop.closedWeekdays?.length ?? 0) > 0 &&
+                    ` · closed ${shop.closedWeekdays!
+                      .map((d) => WEEKDAY_LABELS[d])
+                      .join(", ")}`}
+                </span>
+              ) : (
+                "Colors, slot length, opening hours, closed days & booking window."
+              )}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant={open ? "ghost" : "outline"}
+            className="rounded-full"
+            onClick={() => setOpen((o) => !o)}
+          >
+            {open ? "Close" : "Customize"}
+          </Button>
+        </div>
+
+        {open && (
+          <div className="mt-5 space-y-5 border-t border-border/60 pt-5">
+            {/* Accent color */}
+            <div className="space-y-2">
+              <Label>Page accent color</Label>
+              <p className="text-xs text-muted-foreground">
+                Buttons, selected times and highlights on your booking page.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                {ACCENT_COLORS.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    aria-label={c.name}
+                    onClick={() => setAccent(c.value)}
+                    style={{ backgroundColor: c.value }}
+                    className={cn(
+                      "size-9 rounded-full border-2 transition-transform hover:scale-105",
+                      accent === c.value
+                        ? "border-foreground ring-2 ring-ring/40"
+                        : "border-transparent",
+                    )}
+                  />
+ ))}
+                <button
+                  type="button"
+                  onClick={() => setAccent("")}
+                  className={cn(
+                    "flex size-9 items-center justify-center rounded-full border border-dashed text-muted-foreground transition-colors hover:text-foreground",
+                    accent === "" && "border-primary text-primary",
+                  )}
+                  aria-label="Default color"
+                >
+                  <RotateCcw className="size-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Slot length */}
+            <div className="space-y-2">
+              <Label>Appointment length</Label>
+              <div className="flex flex-wrap gap-2">
+                {SLOT_OPTIONS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setSlotMinutes(m)}
+                    className={cn(
+                      "rounded-full border px-4 py-1.5 text-sm font-medium transition-colors hover:border-primary/50",
+                      slotMinutes === m
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "bg-card text-muted-foreground",
+                    )}
+                  >
+                    {m} min
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Opening hours */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="openHour">Opens at</Label>
+                <Select
+                  value={String(openHour)}
+                  onValueChange={(v) => setOpenHour(Number(v))}
+                >
+                  <SelectTrigger id="openHour">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 24 }, (_, h) => h).map((h) => (
+                      <SelectItem key={h} value={String(h)}>
+                        {hourLabel(h)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="closeHour">Closes at</Label>
+                <Select
+                  value={String(closeHour)}
+                  onValueChange={(v) => setCloseHour(Number(v))}
+                >
+                  <SelectTrigger id="closeHour">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 24 }, (_, i) => i + 1).map((h) => (
+                      <SelectItem key={h} value={String(h)}>
+                        {hourLabel(h)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Closed days */}
+            <div className="space-y-2">
+              <Label>Closed days</Label>
+              <div className="flex flex-wrap gap-2">
+                {WEEKDAY_LABELS.map((label, d) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => toggleClosedDay(d)}
+                    className={cn(
+                      "rounded-full border px-4 py-1.5 text-sm font-medium transition-colors",
+                      closed.includes(d)
+                        ? "border-destructive/40 bg-destructive/10 text-destructive"
+                        : "bg-card text-muted-foreground hover:border-primary/50",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Booking window */}
+            <div className="space-y-2">
+              <Label>Book ahead window</Label>
+              <p className="text-xs text-muted-foreground">
+                How far in the future clients can pick a date.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {WINDOW_OPTIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setWindowDays(d)}
+                    className={cn(
+                      "rounded-full border px-4 py-1.5 text-sm font-medium transition-colors hover:border-primary/50",
+                      windowDays === d
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "bg-card text-muted-foreground",
+                    )}
+                  >
+                    {d} days
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {error && (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
+                {error}
+              </p>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                className="rounded-full"
+                onClick={() => void handleSave()}
+                disabled={saving}
+              >
+                {saving ? "Saving…" : "Save settings"}
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -656,6 +936,11 @@ export default function Dashboard() {
         {/* Optional public profile (logo, about, location…) */}
         <div className="mt-4">
           <ShopProfileEditor shop={shop} />
+        </div>
+
+        {/* Page & booking customisation */}
+        <div className="mt-4">
+          <BookingSettingsEditor shop={shop} />
         </div>
 
         {/* Date navigation */}

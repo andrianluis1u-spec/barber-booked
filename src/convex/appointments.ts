@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { SLOT_MINUTES, isValidPhone } from "../lib/booking";
+import { isValidPhone } from "../lib/booking";
 import type { Id } from "./_generated/dataModel";
 
 /** Look up the signed-in user's shop, or null. */
@@ -45,7 +45,11 @@ async function stopAllJobs(ctx: any, appt: any) {
   await tryCancelJob(ctx, appt.reNotifyJobId);
 }
 
-/** Public: slot starts already booked for one shop on one date. */
+/**
+ * Public: busy intervals for one shop on one date (start & end epoch ms).
+ * Clients render the shop's own slot grid locally and disable anything
+ * overlapping these intervals.
+ */
 export const takenSlots = query({
   args: { barberId: v.id("barbers"), dateKey: v.string() },
   handler: async (ctx, { barberId, dateKey }) => {
@@ -57,7 +61,7 @@ export const takenSlots = query({
       .collect();
     return rows
       .filter((r) => r.status !== "cancelled")
-      .map((r) => r.startAt);
+      .map((r) => ({ start: r.startAt, end: r.endAt }));
   },
 });
 
@@ -93,15 +97,46 @@ export const createBooking = mutation({
     const shop = await ctx.db.get(args.barberId);
     if (!shop) throw new Error("This shop does not exist.");
 
-    // Avoid double-booking the same slot at this shop.
+    // Per-shop booking rules (falling back to platform defaults).
+    const slotMinutes = shop.slotMinutes ?? 30;
+    const openHour = shop.openHour ?? 9;
+    const closeHour = shop.closeHour ?? 20;
+    const closedDays = shop.closedWeekdays ?? [];
+    const windowDays = shop.bookingWindowDays ?? 14;
+
+    // Slot must align with the shop's grid and respect opening hours.
+    const [y, mo, d] = args.dateKey.split("-").map(Number);
+    const slotDate = new Date(y, mo - 1, d);
+    if (closedDays.includes(slotDate.getDay())) {
+      throw new Error("The shop is closed on that day. Pick another day.");
+    }
+    const slotDateObj = new Date(args.startAt);
+    const slotLocalMin = slotDateObj.getHours() * 60 + slotDateObj.getMinutes();
+    if (
+      args.startAt % (slotMinutes * 60_000) !== 0 ||
+      slotLocalMin < openHour * 60 ||
+      slotLocalMin + slotMinutes > closeHour * 60
+    ) {
+      throw new Error("That time is outside the shop's opening hours. Pick another.");
+    }
+    if (args.startAt > Date.now() + windowDays * 24 * 60 * 60 * 1000) {
+      throw new Error("That date is too far ahead. Choose one within the booking window.");
+    }
+
+    // Avoid double-booking: reject any overlap with existing busy intervals
+    // at this shop (works for any mix of slot lengths).
     const rows = await ctx.db
       .query("appointments")
       .withIndex("by_barber_and_date", (q) =>
         q.eq("barberId", args.barberId).eq("dateKey", args.dateKey),
       )
       .collect();
+    const newEnd = args.startAt + slotMinutes * 60_000;
     const clash = rows.some(
-      (r) => r.status !== "cancelled" && r.startAt === args.startAt,
+      (r) =>
+        r.status !== "cancelled" &&
+        args.startAt < r.endAt &&
+        r.startAt < newEnd,
     );
     if (clash) {
       throw new Error("Sorry — that time was just reserved. Choose another.");
@@ -122,7 +157,7 @@ export const createBooking = mutation({
       barberId: args.barberId,
       dateKey: args.dateKey,
       startAt: args.startAt,
-      endAt: args.startAt + SLOT_MINUTES * 60 * 1000,
+      endAt: args.startAt + slotMinutes * 60 * 1000,
       clientName: args.clientName.trim(),
       clientPhone: args.clientPhone.trim(),
       clientUtcOffset: args.clientUtcOffset,

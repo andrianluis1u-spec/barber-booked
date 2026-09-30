@@ -29,59 +29,61 @@ const fadeUp = {
 
 const PRICING = [
   {
-    name: "Solo barber",
-    price: "$9",
+    name: "Basic",
+    price: "$25",
     cadence: "/month",
-    tagline: "One chair, one link, everything included.",
+    tagline: "One chair, one link, fully reminded.",
     features: [
-      "Your own booking link",
-      "Unlimited appointments",
-      "SMS reminders & booking alerts",
-      "WhatsApp reminders",
-      "No-show follow-ups",
+      "Your own booking link, your colors & hours",
+      "Unlimited appointments & clients",
+      "200 reminder messages / month (SMS + WhatsApp)",
+      "Booking alerts straight to your phone",
+      "Client cancel-link, no phone tag",
       "Came / No-show tracking",
     ],
-    cta: "Start free",
-    highlight: false,
-  },
-  {
-    name: "Barbershop",
-    price: "$24",
-    cadence: "/month",
-    tagline: "For shops where every chair stays busy.",
-    features: [
-      "Everything in Solo",
-      "Multiple barbers, one shop page",
-      "Shared & individual calendars",
-      "Client booking history",
-      "Priority support",
-    ],
-    cta: "Start free",
+    cta: "Start with Basic",
     highlight: true,
   },
   {
+    name: "Pro",
+    price: "$49",
+    cadence: "/month",
+    tagline: "For shops where every chair stays busy.",
+    features: [
+      "Everything in Basic",
+      "600 messages / month (SMS + WhatsApp)",
+      "Multiple barbers on one shop page",
+      "Client history & repeat bookings",
+      "Custom SMS sender name",
+      "Priority support",
+    ],
+    cta: "Start with Pro",
+    highlight: false,
+  },
+  {
     name: "Chain",
-    price: "$59",
+    price: "$99",
     cadence: "/month",
     tagline: "Several locations, one standard of reminders.",
     features: [
-      "Everything in Barbershop",
-      "Multi-location links",
+      "Everything in Pro",
+      "Unlimited messages",
+      "Multi-location booking links",
       "Central owner dashboard",
-      "Custom SMS sender name",
-      "Onboarding for your team",
+      "Onboarding for your whole team",
     ],
-    cta: "Start free",
+    cta: "Talk to us",
     highlight: false,
   },
 ];
 
-/** Demo pricing note — real billing is not wired up yet. */
+/** Pricing footnote. */
 function PricingNote() {
   return (
     <p className="mt-6 text-center text-xs leading-5 text-muted-foreground">
-      Demo pricing — shown as an example while the product is in preview. Every
-      plan starts with a fully working free link.
+      Founding-barber pricing — the first shops on Booking Reminded keep this
+      rate forever. Extra messages beyond your plan: $0.05 each. No setup fee,
+      cancel anytime.
     </p>
   );
 }
@@ -153,10 +155,10 @@ export default function Landing() {
               transition={{ duration: 0.55, delay: 0.16 }}
               className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8"
             >
-              Booking Reminded gives every barbershop its own booking page and
-              a single link to share. Clients pick a chair in under a minute;
-              your phone gets every booking, and their phone gets the reminder
-              — one hour before, every time.
+              Booking Reminded gives every barbershop its own booking page —
+              your logo, your colors, your hours. Clients pick a chair in under
+              a minute; your phone gets every booking, and their phone gets the
+              reminder — one hour before, every time.
             </motion.p>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -274,7 +276,7 @@ export default function Landing() {
               {
                 icon: Link2,
                 title: "Generate your link",
-                body: "Sign up, name your shop, and your personal booking page goes live instantly — logo, location and all.",
+                body: "Sign up, name your shop, and your personal booking page goes live instantly — then make it yours: logo, colors, opening hours and closed days.",
               },
               {
                 icon: Smartphone,
@@ -324,11 +326,12 @@ export default function Landing() {
               Pricing
             </p>
             <h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
-              One link, one price, zero surprises
+              Simple plans, built around messages
             </h2>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              SMS + WhatsApp reminders included in every plan. Start with a
-              free link — upgrade when your chairs fill up.
+              Every plan includes your booking link, unlimited appointments and
+              reminder messages by SMS &amp; WhatsApp. Pick the message volume
+              that matches your chairs.
             </p>
           </div>
 
@@ -349,7 +352,7 @@ export default function Landing() {
                 >
                   {plan.highlight && (
                     <Badge className="absolute -top-2.5 left-5 rounded-full bg-primary text-primary-foreground hover:bg-primary">
-                      Most popular
+                      Best to start
                     </Badge>
                   )}
                   <CardContent className="flex h-full flex-col p-6">
