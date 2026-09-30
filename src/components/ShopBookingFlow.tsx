@@ -30,10 +30,74 @@ import {
   isValidPhone,
   startAtToSlot,
   toDateKey,
+  WEEKDAY_LABELS,
 } from "@/lib/booking";
 import { cn } from "@/lib/utils";
 
 type Step = 1 | 2 | 3;
+
+/* ── Full-page theming ───────────────────────────────────────────────────
+ * The shop's accent color overrides the app's CSS variables on the page
+ * root, so EVERYTHING follows: background, cards, borders, muted text and
+ * buttons. Dark accents (black, ink green, midnight) flip the whole page
+ * into a dark, branded experience; light accents keep a light page with
+ * the accent on primary elements.
+ * ──────────────────────────────────────────────────────────────────────*/
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+function mixColor(hex: string, target: [number, number, number], amount: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  const mix = (a: number, b: number) => Math.round(a + (b - a) * amount);
+  const to = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${to(mix(r, target[0]))}${to(mix(g, target[1]))}${to(mix(b, target[2]))}`;
+}
+
+function buildTheme(accent: string): React.CSSProperties {
+  const [r, g, b] = hexToRgb(accent);
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  if (luminance < 0.45) {
+    // Dark accent → the whole page goes dark and branded.
+    const fg = mixColor(accent, [255, 255, 255], 0.93);
+    return {
+      "--page-glow": `radial-gradient(60rem 30rem at 50% -10rem, ${accent}2E, transparent 70%)`,
+      "--background": mixColor(accent, [0, 0, 0], 0.85),
+      "--foreground": fg,
+      "--card": mixColor(accent, [0, 0, 0], 0.7),
+      "--card-foreground": fg,
+      "--popover": mixColor(accent, [0, 0, 0], 0.7),
+      "--popover-foreground": fg,
+      "--primary": accent,
+      "--primary-foreground": "#ffffff",
+      "--secondary": mixColor(accent, [0, 0, 0], 0.58),
+      "--secondary-foreground": fg,
+      "--muted": mixColor(accent, [0, 0, 0], 0.6),
+      "--muted-foreground": mixColor(accent, [255, 255, 255], 0.55),
+      "--accent": mixColor(accent, [0, 0, 0], 0.52),
+      "--accent-foreground": fg,
+      "--border": mixColor(accent, [255, 255, 255], 0.13),
+      "--input": mixColor(accent, [255, 255, 255], 0.16),
+      "--ring": accent,
+    } as React.CSSProperties;
+  }
+  // Light accent → light page, accent on primary elements.
+  return {
+    "--page-glow": `radial-gradient(60rem 30rem at 50% -10rem, ${accent}1A, transparent 70%)`,
+    "--primary": accent,
+    "--primary-foreground": "#ffffff",
+    "--ring": accent,
+    "--background": mixColor(accent, [255, 255, 255], 0.97),
+    "--accent": mixColor(accent, [255, 255, 255], 0.9),
+    "--accent-foreground": accent,
+  } as React.CSSProperties;
+}
 
 /**
  * The client booking flow for one shop: date & time → details + SMS consent
@@ -63,15 +127,10 @@ export default function ShopBookingFlow({
   const closedDays = shop.closedWeekdays ?? [];
   const windowDays = shop.bookingWindowDays ?? 14;
   const accent = shop.accentColor ?? null;
-
-  /** Inline accent overrides — win over the default theme classes. */
-  const accentBg = accent
-    ? { backgroundColor: accent, borderColor: accent, color: "#fff" }
-    : undefined;
-  const accentTint = accent
-    ? { borderColor: `${accent}59`, backgroundColor: `${accent}0D` }
-    : undefined;
-  const accentText = accent ? { color: accent } : undefined;
+  const themeStyle = useMemo(
+    () => (accent ? buildTheme(accent) : undefined),
+    [accent],
+  );
 
   const taken = useQuery(
     api.appointments.takenSlots,
@@ -160,14 +219,22 @@ export default function ShopBookingFlow({
   }
 
   return (
-    <div className="page-glow min-h-screen">
+    <div className="page-glow min-h-screen" style={themeStyle}>
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2.5">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 font-serif text-base font-semibold text-primary">
-              {shop.shopName.slice(0, 1)}
-            </div>
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={shop.shopName}
+                className="size-10 rounded-lg border object-cover"
+              />
+            ) : (
+              <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 font-serif text-base font-semibold text-primary">
+                {shop.shopName.slice(0, 1)}
+              </div>
+            )}
             <div>
               <p className="text-[15px] font-semibold leading-tight tracking-tight">
                 {shop.shopName}
@@ -189,82 +256,100 @@ export default function ShopBookingFlow({
       </header>
 
       {/* ── Shop profile — every field is optional and barber-controlled ── */}
-      {hasProfileInfo && (
-        <section className="mx-auto w-full max-w-3xl px-4 pt-8 sm:px-6">
-          <Card className="card-soft rounded-2xl">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-muted">
-                  {logoUrl ? (
-                    <img
-                      src={logoUrl}
-                      alt={shop.shopName}
-                      className="size-full object-cover"
-                    />
-                  ) : (
-                    <Scissors className="size-7 text-muted-foreground" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="font-serif text-xl font-semibold tracking-tight">
-                    {shop.shopName}
-                  </h2>
-                  {shop.tagline && (
-                    <p className="mt-0.5 text-sm text-muted-foreground">
-                      {shop.tagline}
-                    </p>
-                  )}
-                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
-                    {shop.address &&
-                      (shop.mapsUrl ? (
-                        <a
-                          href={shop.mapsUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
-                        >
-                          <MapPin className="size-3.5" />
-                          {shop.address}
-                          <ExternalLink className="size-3" />
-                        </a>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                          <MapPin className="size-3.5" />
-                          {shop.address}
-                        </span>
-                      ))}
-                    {shop.publicPhone && (
+      <section className="mx-auto w-full max-w-3xl px-4 pt-8 sm:px-6">
+        <Card className="card-soft overflow-hidden rounded-2xl">
+          <div
+            className="h-14 w-full"
+            style={
+              accent
+                ? { background: `linear-gradient(90deg, ${accent}, ${accent}00)` }
+                : { background: "linear-gradient(90deg, var(--primary), transparent)" }
+            }
+          />
+          <CardContent className="p-6">
+            <div className="flex items-start gap-5">
+              <div className="-mt-12 flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl border-4 border-background bg-muted shadow-lg">
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt={shop.shopName}
+                    className="size-full object-cover"
+                  />
+                ) : (
+                  <Scissors className="size-10 text-muted-foreground" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1 pt-1">
+                <h2 className="font-serif text-2xl font-semibold tracking-tight">
+                  {shop.shopName}
+                </h2>
+                {shop.tagline && (
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    {shop.tagline}
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+                  {shop.address &&
+                    (shop.mapsUrl ? (
                       <a
-                        href={`tel:${shop.publicPhone.replace(/\s/g, "")}`}
-                        className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        <Phone className="size-3.5" style={accentText} />
-                        {shop.publicPhone}
-                      </a>
-                    )}
-                    {shop.instagramUrl && (
-                      <a
-                        href={shop.instagramUrl}
+                        href={shop.mapsUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
+                        className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
                       >
-                        <Instagram className="size-3.5" />
-                        Instagram
+                        <MapPin className="size-3.5" />
+                        {shop.address}
+                        <ExternalLink className="size-3" />
                       </a>
-                    )}
-                  </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                        <MapPin className="size-3.5" />
+                        {shop.address}
+                      </span>
+                    ))}
+                  {shop.publicPhone && (
+                    <a
+                      href={`tel:${shop.publicPhone.replace(/\s/g, "")}`}
+                      className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <Phone className="size-3.5" />
+                      {shop.publicPhone}
+                    </a>
+                  )}
+                  {shop.instagramUrl && (
+                    <a
+                      href={shop.instagramUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <Instagram className="size-3.5" />
+                      Instagram
+                    </a>
+                  )}
                 </div>
               </div>
-              {shop.about && (
-                <p className="mt-4 border-t border-border/60 pt-4 text-sm leading-6 text-muted-foreground">
-                  {shop.about}
-                </p>
+            </div>
+            {shop.about && (
+              <p className="mt-4 border-t border-border/60 pt-4 text-sm leading-6 text-muted-foreground">
+                {shop.about}
+              </p>
+            )}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4 text-xs text-muted-foreground">
+              <span>
+                {slotMinutes}-minute sittings · open {String(openHour).padStart(2, "0")}:
+                00–{String(closeHour % 24).padStart(2, "0")}:00 · book up to{" "}
+                {windowDays} days ahead
+              </span>
+              {closedDays.length > 0 && (
+                <span>
+                  Closed {closedDays.map((d) => WEEKDAY_LABELS[d]).join(", ")}
+                </span>
               )}
-            </CardContent>
-          </Card>
-        </section>
-      )}
+            </div>
+          </CardContent>
+        </Card>
+      </section>
 
       <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
         {/* Stepper */}
@@ -342,13 +427,10 @@ export default function ShopBookingFlow({
                       setDateKey(key);
                       setSlot(null);
                     }}
-                    style={active ? accentBg : undefined}
                     className={cn(
                       "flex w-16 shrink-0 flex-col items-center gap-0.5 rounded-xl border bg-card py-2.5 transition-colors hover:border-primary/50",
                       active &&
-                        !accent &&
                         "border-primary bg-primary text-primary-foreground ring-2 ring-ring/30 hover:border-primary",
-                      active && accent && "ring-2 ring-ring/30",
                     )}
                   >
                     <span className="text-[11px] uppercase tracking-wide opacity-70">
@@ -394,15 +476,12 @@ export default function ShopBookingFlow({
                           type="button"
                           disabled={s.disabled}
                           onClick={() => setSlot(s.start)}
-                          style={slot === s.start ? accentBg : undefined}
                           className={cn(
                             "rounded-lg border py-2 text-sm font-medium transition-colors hover:border-primary/50",
                             s.disabled &&
                               "cursor-not-allowed opacity-35 hover:border-border",
                             slot === s.start &&
-                              !accent &&
                               "border-primary bg-primary text-primary-foreground ring-2 ring-ring/30 hover:border-primary",
-                            slot === s.start && accent && "ring-2 ring-ring/30",
                           )}
                         >
                           {s.label}
@@ -419,11 +498,7 @@ export default function ShopBookingFlow({
             </div>
 
             <div className="mt-6 flex justify-end">
-              <Button
-                disabled={slot === null}
-                onClick={() => setStep(2)}
-                style={accentBg}
-              >
+              <Button disabled={slot === null} onClick={() => setStep(2)}>
                 Continue <ArrowRight className="ml-1.5 size-4" />
               </Button>
             </div>
@@ -478,20 +553,12 @@ export default function ShopBookingFlow({
                 </div>
 
                 {/* Required SMS consent */}
-                <div
-                  className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/5 p-4"
-                  style={accentTint}
-                >
+                <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/5 p-4">
                   <Checkbox
                     id="sms-consent"
                     checked={consent}
                     onCheckedChange={(v) => setConsent(v === true)}
                     className="mt-0.5"
-                    style={
-                      accent
-                        ? ({ "--primary": accent } as React.CSSProperties)
-                        : undefined
-                    }
                   />
                   <div>
                     <Label
@@ -512,16 +579,13 @@ export default function ShopBookingFlow({
 
             {/* Summary */}
             {dateKey && slot !== null && (
-              <div
-                className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-primary/25 bg-primary/5 px-5 py-4 text-sm"
-                style={accentTint}
-              >
+              <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-primary/25 bg-primary/5 px-5 py-4 text-sm">
                 <span className="flex items-center gap-1.5">
-                  <CalendarDays className="size-4 text-primary" style={accentText} />
+                  <CalendarDays className="size-4 text-primary" />
                   {format(new Date(dateKey + "T12:00:00"), "EEE d MMM")}
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <Clock className="size-4 text-primary" style={accentText} />
+                  <Clock className="size-4 text-primary" />
                   {startAtToSlot(slot)} · {slotMinutes} min
                 </span>
               </div>
@@ -549,7 +613,6 @@ export default function ShopBookingFlow({
                   !isValidPhone(phone) ||
                   !consent
                 }
-                style={accentBg}
               >
                 {submitting ? (
                   <>

@@ -1,0 +1,17 @@
+{
+  "name": "Booking Reminded",
+  "short_name": "Booking Reminded",
+  "description": "Barbershops share one link. Clients book a chair. Everyone gets reminded.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1f4235",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import {
   Check,
   Link2,
   MessageSquareText,
+  Palette,
   Scissors,
   ShieldCheck,
   Smartphone,
@@ -172,14 +173,14 @@ export default function Landing() {
                   <ArrowRight className="ml-1.5 size-4" />
                 </Link>
               </Button>
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="rounded-full px-7"
-              >
-                <a href="#pricing">See the pricing</a>
-              </Button>
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="rounded-full px-7"
+            >
+              <a href="#why">Why reminders pay off</a>
+            </Button>
             </motion.div>
             <motion.p
               initial={{ opacity: 0 }}
@@ -260,6 +261,64 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ── The problem: silent no-shows ─────────────────────────── */}
+      <section id="why" className="border-t border-border/60">
+        <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-sm font-medium uppercase tracking-wider text-destructive">
+              The problem
+            </p>
+            <h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+              An appointment that isn't reminded is a coin flip
+            </h2>
+            <p className="mt-4 text-sm leading-7 text-muted-foreground sm:text-base">
+              Clients book on Instagram and forget. You wait by the chair, the
+              phone stays silent, and the slot is gone for anyone else.
+            </p>
+          </div>
+
+          <div className="mx-auto mt-12 grid max-w-4xl gap-4 sm:grid-cols-3">
+            {[
+              {
+                stat: "$500+",
+                label: "lost per month",
+                body: "Four forgotten appointments a week at an average cut price quietly adds up to thousands a year.",
+              },
+              {
+                stat: "~30%",
+                label: "of bookings never reminded",
+                body: "DMs and phone bookings leave no trail — and nobody dares to text a stranger a day before. Wait — nobody texts, nobody comes.",
+              },
+              {
+                stat: "1 hour",
+                label: "is all it takes",
+                body: "A reminder sent one hour before cuts no-shows dramatically — the same reason airlines and dentists never skip it.",
+              },
+            ].map((s, i) => (
+              <motion.div
+                key={s.stat}
+                {...fadeUp}
+                transition={{ duration: 0.5, delay: i * 0.08 }}
+              >
+                <Card className="card-soft h-full rounded-2xl border-destructive/20 bg-destructive/[0.03]">
+                  <CardContent className="p-6">
+                    <p className="font-serif text-4xl font-semibold text-destructive">
+                      {s.stat}
+                    </p>
+                    <span className="mt-1 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      {s.label}
+                    </span>
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                      {s.body}
+                    </p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── How it works ───────────────────────────────────────── */}
       <section id="how" className="border-t border-border/60 bg-muted/30">
         <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6">
@@ -268,31 +327,46 @@ export default function Landing() {
               How it works
             </p>
             <h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
-              From link to chair in three quiet steps
+              From link to chair in six quiet steps
             </h2>
           </div>
-          <div className="mt-12 grid gap-6 md:grid-cols-3">
+          <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {[
               {
                 icon: Link2,
                 title: "Generate your link",
-                body: "Sign up, name your shop, and your personal booking page goes live instantly — then make it yours: logo, colors, opening hours and closed days.",
+                body: "Sign up, name your shop and your personal booking page goes live in two minutes — no website, no app, no developer.",
+              },
+              {
+                icon: Palette,
+                title: "Make it yours",
+                body: "Upload your logo, pick your brand color, set your hours and closed days. Your page looks like your shop — not like a template.",
               },
               {
                 icon: Smartphone,
                 title: "Clients book themselves",
-                body: "They open your link, pick a free time and leave their name and number. No calls, no DMs, no double bookings.",
+                body: "They open your link, see live availability, and reserve a chair with name and phone. Double bookings are impossible — the grid closes instantly.",
+              },
+              {
+                icon: MessageSquareText,
+                title: "You get texted instantly",
+                body: "Every booking lands on your phone the second it happens: name, number, day and time. No refreshing a dashboard to find out.",
               },
               {
                 icon: BellRing,
-                title: "Everyone gets reminded",
-                body: "Your phone pings for every new booking. Their phone gets a reminder an hour before — with a cancel link if plans change.",
+                title: "Clients get reminded",
+                body: "One hour before their appointment, your client gets a text with the time and a cancel link — so empty chairs reopen in time.",
+              },
+              {
+                icon: Check,
+                title: "You stay in control",
+                body: "After the appointment, a text asks if the client came. One tap confirms them; if they no-showed, we invite them back by text.",
               },
             ].map((step, i) => (
               <motion.div
                 key={step.title}
                 {...fadeUp}
-                transition={{ duration: 0.5, delay: i * 0.1 }}
+                transition={{ duration: 0.5, delay: (i % 3) * 0.08 }}
               >
                 <Card className="card-soft h-full rounded-2xl border-border/70">
                   <CardContent className="p-6">
