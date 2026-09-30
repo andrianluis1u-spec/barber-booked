@@ -90,6 +90,7 @@ const schema = defineSchema(
       reminderJobId: v.optional(v.id("_scheduled_functions")),
       // New-booking alert to the BARBER, sent immediately after a client
       // books: name, phone, date and time.
+      alertJobId: v.optional(v.id("_scheduled_functions")),
       alertStatus: v.optional(
         v.union(
           v.literal("scheduled"),

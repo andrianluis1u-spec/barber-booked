@@ -1,6 +1,6 @@
 import { useQuery } from "convex/react";
 import { ArrowRight, Scissors } from "lucide-react";
-import { useParams, Link } from "react-router";
+import { useParams, Link, useSearchParams } from "react-router";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,6 +8,10 @@ import ShopBookingFlow from "@/components/ShopBookingFlow";
 
 export default function ShopPage() {
   const { slug = "" } = useParams();
+  const [searchParams] = useSearchParams();
+  // Present when the client followed the "book a new date" link from a
+  // no-show text.
+  const rebookToken = searchParams.get("rebook") ?? undefined;
   const shop = useQuery(api.barbers.bySlug, { slug });
 
   if (shop === undefined) {
@@ -46,5 +50,5 @@ export default function ShopPage() {
     );
   }
 
-  return <ShopBookingFlow shop={shop} />;
+  return <ShopBookingFlow shop={shop} rebookToken={rebookToken} />;
 }

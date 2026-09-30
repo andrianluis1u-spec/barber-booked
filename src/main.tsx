@@ -14,6 +14,7 @@ const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const ShopPage = lazy(() => import("./pages/ShopPage.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
+import { CancelBookingPage } from "./components/ShopBookingFlow";
 
 // Simple loading fallback for route transitions
 function RouteLoading() {
@@ -121,6 +122,7 @@ createRoot(document.getElementById("root")!).render(
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/b/:slug" element={<ShopPage />} />
+              <Route path="/c/:token" element={<CancelBookingPage />} />
               <Route
                 path="/auth"
                 element={<AuthPage redirectAfterAuth="/dashboard" />}

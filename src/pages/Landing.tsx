@@ -19,7 +19,6 @@ import logo from "@/assets/logo.svg";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { SERVICES } from "@/lib/booking";
 
 const STEPS = [
   {
@@ -30,7 +29,7 @@ const STEPS = [
   {
     icon: Smartphone,
     title: "Leave your details",
-    body: "Your name, phone number and service of choice. No account, no downloads — the essentials only.",
+    body: "Your name and phone number, with a tick confirming you're happy to receive texts. No account, no downloads — the essentials only.",
   },
   {
     icon: BellRing,
@@ -80,8 +79,8 @@ export default function Landing() {
               <Link to="/dashboard">Barber access</Link>
             </Button>
             <Button asChild size="sm" className="rounded-full">
-              <Link to="/book">
-                Book an appointment
+              <Link to="/#shops">
+                Find a shop
                 <ArrowRight className="ml-1 size-4" />
               </Link>
             </Button>
@@ -181,9 +180,9 @@ export default function Landing() {
                 </p>
                 <div className="mt-5 space-y-3">
                   {[
-                    { icon: Scissors, label: "Cut & Beard", meta: "60 minutes · $35" },
-                    { icon: Clock, label: "Reminder", meta: "One hour before" },
-                    { icon: MessageSquareText, label: "Confirmation", meta: "Sent by message" },
+                    { icon: Clock, label: "Chair reserved", meta: "30 minutes, straight from the link" },
+                    { icon: BellRing, label: "Reminder", meta: "One hour before" },
+                    { icon: MessageSquareText, label: "Barber notified", meta: "Immediately, by text" },
                   ].map((row) => (
                     <div
                       key={row.label}
@@ -316,53 +315,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── For clients ────────────────────────────────────────── */}
-      <section id="services" className="border-t border-border/60">
-        <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div className="max-w-2xl">                <p className="text-sm font-medium uppercase tracking-wider text-primary">
-                For clients
-              </p>
-              <h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
-                The standard menu, ready on every shop page
-              </h2>
-            </div>
-            <Button asChild variant="outline" className="rounded-full">
-              <Link to="#shops">
-                Find a shop to book
-                <ArrowRight className="ml-1.5 size-4" />
-              </Link>
-            </Button>
-          </div>
-          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {SERVICES.map((s, i) => (
-              <motion.div
-                key={s.id}
-                {...fadeUp}
-                transition={{ duration: 0.45, delay: i * 0.07 }}
-              >
-                <Card className="card-soft group h-full rounded-2xl border-border/70 transition-colors hover:border-primary/40">
-                  <CardContent className="flex h-full flex-col p-5">
-                    <div className="flex items-start justify-between">
-                      <span className="text-sm font-semibold">{s.name}</span>
-                      <span className="font-serif text-xl font-semibold text-primary">
-                        ${s.price}
-                      </span>
-                    </div>
-                    <p className="mt-2 flex-1 text-sm leading-6 text-muted-foreground">
-                      {s.blurb}
-                    </p>
-                    <p className="mt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      {s.minutes} minutes
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ── For barbers ────────────────────────────────────────── */}
       <section id="barber" className="border-t border-border/60 bg-muted/30">
         <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:items-center">
@@ -376,8 +328,8 @@ export default function Landing() {
             <ul className="mt-8 space-y-4">
               {[
                 "Every appointment reaches your dashboard the moment it is made",
-                "Clients are texted a reminder one hour before their time",
-                "Confirm a client with a single tap as they take the chair",
+                "You get a text with the client's name and number the second they book",
+                "One hour after each appointment, a Came / No-show nudge lands on your phone",
               ].map((line) => (
                 <li key={line} className="flex items-start gap-3">
                   <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
@@ -417,10 +369,10 @@ export default function Landing() {
                 </div>
                 <div className="mt-4 space-y-2.5">
                   {[
-                    { t: "09:30", n: "Marco D.", s: "Signature Cut", ok: true },
-                    { t: "11:00", n: "Amine K.", s: "Beard Trim", ok: true },
-                    { t: "13:30", n: "Sofia R.", s: "Cut & Beard", ok: false },
-                    { t: "16:00", n: "Louis P.", s: "Junior Cut", ok: false },
+                    { t: "09:30", n: "Marco D.", m: "Booked via your link", ok: true },
+                    { t: "11:00", n: "Amine K.", m: "Booked via your link", ok: true },
+                    { t: "13:30", n: "Sofia R.", m: "Booked via your link", ok: false },
+                    { t: "16:00", n: "Louis P.", m: "Booked via your link", ok: false },
                   ].map((r) => (
                     <div
                       key={r.t}
@@ -432,7 +384,7 @@ export default function Landing() {
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{r.n}</p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {r.s}
+                          {r.m}
                         </p>
                       </div>
                       <span

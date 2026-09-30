@@ -6,6 +6,7 @@ import {
   mutation,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import axios from "axios";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -426,7 +427,11 @@ export const cancelByToken = mutation({
       );
     }
 
-    await cancelScheduledJobs(ctx, appt);
+    await cancelScheduledJobs(ctx.scheduler, [
+      appt.reminderJobId,
+      appt.followUpJobId,
+      appt.reNotifyJobId,
+    ]);
     await ctx.db.patch(appt._id, {
       status: "cancelled",
       reminderStatus: "cancelled",
@@ -436,19 +441,19 @@ export const cancelByToken = mutation({
   },
 });
 
-/** Cancel a booking's scheduled jobs, tolerating already-fired jobs. */
+/**
+ * Cancel a booking's scheduled jobs, tolerating already-fired jobs. Plain
+ * argument shape (instead of the full ctx/appt types) keeps this helper
+ * usable from both public and internal mutations.
+ */
 async function cancelScheduledJobs(
-  ctx: { scheduler: { cancel: (id: unknown) => Promise<void> } },
-  appt: {
-    reminderJobId?: unknown;
-    followUpJobId?: unknown;
-    reNotifyJobId?: unknown;
-  },
+  scheduler: { cancel: (id: any) => Promise<void> },
+  jobs: Array<Id<"_scheduled_functions"> | undefined>,
 ) {
-  for (const jobId of [appt.reminderJobId, appt.followUpJobId, appt.reNotifyJobId]) {
+  for (const jobId of jobs) {
     if (jobId) {
       try {
-        await ctx.scheduler.cancel(jobId);
+        await scheduler.cancel(jobId);
       } catch {
         // Already fired or completed — nothing to cancel.
       }
