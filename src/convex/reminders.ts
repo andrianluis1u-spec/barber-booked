@@ -10,18 +10,24 @@ import type { Id } from "./_generated/dataModel";
 import axios from "axios";
 
 /* ────────────────────────────────────────────────────────────────────────────
- * SMS hub.
+ * Notification hub — SMS (Twilio) + Email (Resend) fallbacks.
  *
- * Every text the platform sends goes through `sendText` below. Behaviour is
- * controlled by two environment variables (Keys/API keys UI):
+ * Environment variables (Keys/API keys UI):
+ *   DRY_RUN                — set to print messages to the console instead of
+ *                            sending anything (SMS *and* email).
+ *   TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER — SMS.
+ *   RESEND_API_KEY         — email fallback so booking alerts and client
+ *                            confirmations work before SMS is upgraded.
+ *   RESEND_FROM_EMAIL      — optional "Booking Reminded <reminders@yourdomain>"
+ *                            once a domain is verified in Resend; defaults to
+ *                            Resend's test sender.
  *
- *   DRY_RUN  — when set ("1"/"true"), messages are printed to the console
- *              instead of being sent. Useful for testing the whole flow
- *              without Twilio keys or a verified phone number.
- *   TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER — real
- *              sending when DRY_RUN is off.
- *
- * Client-facing texts always end with "Reply STOP to opt out".
+ * Behaviour rules:
+ *   • Client-facing texts end with "Reply STOP to opt out".
+ *   • Replies (STOP/START) are handled by the HTTP webhook (http.ts) and
+ *     stored in the smsOptOuts table; opted-out numbers never get texts.
+ *   • Appointment times are always rendered in the SHOP's local time
+ *     (client-facing messages use the client's offset captured at booking).
  * ──────────────────────────────────────────────────────────────────────────── */
 
 function dryRun(): boolean {
@@ -29,7 +35,7 @@ function dryRun(): boolean {
   return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 
-/** Format an epoch-ms time in a UTC offset (minutes behind UTC) as HH:MM. */
+/** HH:MM for an epoch-ms time in a UTC offset (minutes behind UTC). */
 function localClock(startAt: number, utcOffsetMin: number): string {
   const d = new Date(startAt - utcOffsetMin * 60_000);
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(
@@ -37,7 +43,7 @@ function localClock(startAt: number, utcOffsetMin: number): string {
   ).padStart(2, "0")}`;
 }
 
-/** Format an epoch-ms date in a UTC offset as "Friday 9 October". */
+/** "Friday 9 October" for an epoch-ms time in a UTC offset. */
 function localDay(startAt: number, utcOffsetMin: number): string {
   const d = new Date(startAt - utcOffsetMin * 60_000);
   return d.toLocaleDateString("en-GB", {
@@ -48,29 +54,27 @@ function localDay(startAt: number, utcOffsetMin: number): string {
   });
 }
 
+/* ── SMS (Twilio REST, no SDK) ───────────────────────────────────────────── */
+
 /**
- * Send one SMS via Twilio's REST API (no SDK). When DRY_RUN is on, the
- * message is printed to the console instead. Never throws: failures are
- * logged and reported through the return value.
+ * Send one SMS via Twilio. When DRY_RUN is on, print instead. Never throws;
+ * failures are logged and reported through the return value.
  */
-async function sendText(to: string, body: string): Promise<"sent" | "dry" | "error"> {
+async function sendText(
+  to: string,
+  body: string,
+): Promise<"sent" | "dry" | "error"> {
   if (dryRun()) {
-    console.log(
-      `\n[DRY_RUN] SMS (not sent)\n  To:   ${to}\n  Body: ${body}\n`,
-    );
+    console.log(`\n[DRY_RUN] SMS (not sent)\n  To:   ${to}\n  Body: ${body}\n`);
     return "dry";
   }
-
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const fromNumber = process.env.TWILIO_PHONE_NUMBER;
   if (!accountSid || !authToken || !fromNumber) {
-    console.error(
-      "[SMS] Twilio credentials missing (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER) — set them or enable DRY_RUN.",
-    );
+    console.error("[SMS] Twilio credentials missing — skipping send.");
     return "error";
   }
-
   try {
     await axios.post(
       `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
@@ -91,7 +95,52 @@ async function sendText(to: string, body: string): Promise<"sent" | "dry" | "err
   }
 }
 
-/** Message bodies. Client texts end with the STOP footer. */
+/* ── Email (Resend REST, no SDK) ─────────────────────────────────────────── */
+
+/**
+ * Send one transactional email via Resend. Works without Twilio, so booking
+ * alerts and client confirmations arrive even before SMS is set up. Never
+ * throws; returns a status like sendText.
+ */
+async function sendEmail(
+  to: string,
+  subject: string,
+  text: string,
+): Promise<"sent" | "dry" | "error" | "disabled"> {
+  if (dryRun()) {
+    console.log(
+      `\n[DRY_RUN] EMAIL (not sent)\n  To:      ${to}\n  Subject: ${subject}\n  Body:    ${text}\n`,
+    );
+    return "dry";
+  }
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return "disabled";
+  const from =
+    process.env.RESEND_FROM_EMAIL ?? "Booking Reminded <onboarding@resend.dev>";
+  try {
+    await axios.post(
+      "https://api.resend.com/emails",
+      { from, to: [to], subject, text },
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 10_000,
+      },
+    );
+    return "sent";
+  } catch (err) {
+    console.error(
+      "[EMAIL] Resend send failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+    return "error";
+  }
+}
+
+/* ── Message bodies ──────────────────────────────────────────────────────── */
+
 const STOP = "Reply STOP to opt out.";
 
 function clientReminderBody(
@@ -142,13 +191,92 @@ function clientRebookBody(
   );
 }
 
-/* ── Scheduled jobs ──────────────────────────────────────────────────────── */
+/** HTML-escape a string for email bodies. */
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function clientConfirmationEmail(opts: {
+  shopName: string;
+  clientName: string;
+  day: string;
+  clock: string;
+  cancelUrl: string;
+}): { subject: string; text: string; html: string } {
+  const subject = `Appointment confirmed — ${opts.shopName}`;
+  const lines = [
+    `Hi ${opts.clientName},`,
+    ``,
+    `Your appointment at ${opts.shopName} is booked.`,
+    ``,
+    `When:  ${opts.day} at ${opts.clock}`,
+    `Where: ${opts.shopName}`,
+    ``,
+    `Plans changed? Cancel here and the time frees up for someone else:`,
+    opts.cancelUrl,
+    ``,
+    `See you soon!`,
+    `— ${opts.shopName}, powered by Booking Reminded`,
+  ];
+  const text = lines.join("\n");
+  const html = `
+<div style="font-family:Inter,Segoe UI,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#111">
+  <h2 style="margin:0 0 4px;font-size:20px">Appointment confirmed</h2>
+  <p style="margin:0 0 16px;color:#666;font-size:14px">${esc(opts.shopName)}</p>
+  <div style="border:1px solid #e5e7eb;border-radius:12px;padding:16px;background:#f9fafb">
+    <p style="margin:0;font-size:14px;color:#666">When</p>
+    <p style="margin:0 0 12px;font-size:16px;font-weight:600">${esc(opts.day)} at ${esc(opts.clock)}</p>
+    <p style="margin:0;font-size:14px;color:#666">Who</p>
+    <p style="margin:0;font-size:16px;font-weight:600">${esc(opts.clientName)}</p>
+  </div>
+  <p style="margin:16px 0 8px;font-size:14px">Plans changed?</p>
+  <a href="${esc(opts.cancelUrl)}" style="display:inline-block;background:#1F4235;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;font-size:14px;font-weight:600">Cancel my appointment</a>
+  <p style="margin:20px 0 0;color:#999;font-size:12px">— ${esc(opts.shopName)}, powered by Booking Reminded</p>
+</div>`;
+  return { subject, text, html };
+}
+
+function barberAlertEmail(opts: {
+  clientName: string;
+  clientPhone: string;
+  day: string;
+  clock: string;
+  dashboardUrl: string;
+}): { subject: string; text: string; html: string } {
+  const subject = `New booking — ${opts.clientName}, ${opts.day} ${opts.clock}`;
+  const lines = [
+    `New booking at your shop:`,
+    ``,
+    `Client: ${opts.clientName} (${opts.clientPhone})`,
+    `When:   ${opts.day} at ${opts.clock}`,
+    ``,
+    `Manage it here: ${opts.dashboardUrl}`,
+  ];
+  const text = lines.join("\n");
+  const html = `
+<div style="font-family:Inter,Segoe UI,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#111">
+  <h2 style="margin:0 0 16px;font-size:20px">New booking 🎉</h2>
+  <div style="border:1px solid #e5e7eb;border-radius:12px;padding:16px;background:#f9fafb">
+    <p style="margin:0 0 4px;font-size:16px;font-weight:600">${esc(opts.clientName)}</p>
+    <p style="margin:0 0 12px;font-size:14px;color:#666">${esc(opts.clientPhone)}</p>
+    <p style="margin:0;font-size:14px;color:#666">When</p>
+    <p style="margin:0;font-size:16px;font-weight:600">${esc(opts.day)} at ${esc(opts.clock)}</p>
+  </div>
+  <a href="${esc(opts.dashboardUrl)}" style="display:inline-block;margin-top:16px;background:#1F4235;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;font-size:14px;font-weight:600">Open dashboard</a>
+</div>`;
+  return { subject, text, html };
+}
+
+/* ── Scheduled jobs ──────────────────────────────────────────────────── */
 
 /**
- * Client reminder, scheduled one hour before the appointment (or
- * immediately when booked inside the final hour). Includes a cancel link
- * that frees the slot. Best-effort: never throws, so a failed text does not
- * spin up Convex retries.
+ * Client reminder, scheduled one hour before the appointment (with cancel
+ * link). SMS when consented and not opted out; email fallback otherwise.
+ * Best-effort: never throws.
  */
 export const sendReminder = internalAction({
   args: { appointmentId: v.id("appointments") },
@@ -165,38 +293,55 @@ export const sendReminder = internalAction({
       return;
     }
 
-    // Respect the client's SMS consent: no consent, no client messages.
-    if (!appt.smsConsentAt) {
-      await ctx.runMutation(internal.reminders.setReminderStatus, {
-        id: appointmentId,
-        status: "cancelled",
-      });
-      return;
-    }
-
     const shop = await ctx.runQuery(internal.reminders.getShop, {
       id: appt.barberId,
     });
     const shopName = shop?.shopName ?? "your barbershop";
     const base = shop?.bookingBaseUrl ?? "";
-    const cancelUrl = appt.cancelToken
-      ? `${base}/c/${appt.cancelToken}`
-      : "";
-    const body = clientReminderBody(
-      shopName,
-      appt.clientName,
-      localDay(appt.startAt, appt.clientUtcOffset ?? 0),
-      localClock(appt.startAt, appt.clientUtcOffset ?? 0),
-      cancelUrl,
+    const cancelUrl = appt.cancelToken ? `${base}/c/${appt.cancelToken}` : "";
+    const day = localDay(
+      appt.startAt,
+      appt.clientUtcOffset ?? shop?.ownerUtcOffset ?? 0,
+    );
+    const clock = localClock(
+      appt.startAt,
+      appt.clientUtcOffset ?? shop?.ownerUtcOffset ?? 0,
     );
 
-    const result = await sendText(appt.clientPhone, body);
-    if (result === "error") {
-      await ctx.runMutation(internal.reminders.setReminderStatus, {
-        id: appointmentId,
-        status: "failed",
+    let smsOk = false;
+    if (appt.smsConsentAt) {
+      const optedOut = await ctx.runQuery(internal.reminders.isOptedOut, {
+        phone: appt.clientPhone,
+        barberId: appt.barberId,
       });
-      return;
+      if (!optedOut) {
+        const result = await sendText(
+          appt.clientPhone,
+          clientReminderBody(shopName, appt.clientName, day, clock, cancelUrl),
+        );
+        smsOk = result === "sent" || result === "dry";
+      }
+    }
+    // Email fallback (also fires when SMS is off/failed) — but never email
+    // a client who has opted out.
+    if (!smsOk) {
+      const clientEmail = await ctx.runQuery(
+        internal.reminders.getClientEmail,
+        { phone: appt.clientPhone, barberId: appt.barberId },
+      );
+      if (clientEmail && !(await ctx.runQuery(internal.reminders.isOptedOut, { phone: appt.clientPhone, barberId: appt.barberId }))) {
+        await sendEmail(
+          clientEmail,
+          clientConfirmationEmail({
+            shopName,
+            clientName: appt.clientName,
+            day,
+            clock,
+            cancelUrl,
+          }).subject,
+          clientReminderBody(shopName, appt.clientName, day, clock, cancelUrl),
+        );
+      }
     }
     await ctx.runMutation(internal.reminders.markReminderSent, {
       id: appointmentId,
@@ -205,8 +350,8 @@ export const sendReminder = internalAction({
 });
 
 /**
- * New-booking alert to the barber, scheduled right after the booking is
- * created. Best-effort, never throws.
+ * New-booking alert to the barber: SMS to ownerPhone when possible, plus an
+ * email fallback so the alert always arrives. Best-effort, never throws.
  */
 export const sendNewBookingAlert = internalAction({
   args: { appointmentId: v.id("appointments") },
@@ -226,27 +371,33 @@ export const sendNewBookingAlert = internalAction({
     const shop = await ctx.runQuery(internal.reminders.getShop, {
       id: appt.barberId,
     });
-    if (!shop?.ownerPhone) {
-      await ctx.runMutation(internal.reminders.setAlertStatus, {
-        id: appointmentId,
-        status: "cancelled",
-      });
-      return;
-    }
+    if (!shop) return;
 
-    const body = barberNewBookingBody(
-      appt.clientName,
-      appt.clientPhone,
-      localDay(appt.startAt, shop.ownerUtcOffset ?? 0),
-      localClock(appt.startAt, shop.ownerUtcOffset ?? 0),
-    );
-    const result = await sendText(shop.ownerPhone, body);
-    if (result === "error") {
-      await ctx.runMutation(internal.reminders.setAlertStatus, {
-        id: appointmentId,
-        status: "failed",
+    const day = localDay(appt.startAt, shop.ownerUtcOffset ?? 0);
+    const clock = localClock(appt.startAt, shop.ownerUtcOffset ?? 0);
+    let delivered = false;
+
+    if (shop.ownerPhone) {
+      const result = await sendText(
+        shop.ownerPhone,
+        barberNewBookingBody(appt.clientName, appt.clientPhone, day, clock),
+      );
+      delivered = result === "sent" || result === "dry";
+    }
+    if (!delivered) {
+      const ownerEmail = await ctx.runQuery(internal.reminders.getOwnerEmail, {
+        barberId: shop._id,
       });
-      return;
+      if (ownerEmail) {
+        const mail = barberAlertEmail({
+          clientName: appt.clientName,
+          clientPhone: appt.clientPhone,
+          day,
+          clock,
+          dashboardUrl: `${shop.bookingBaseUrl}/dashboard`,
+        });
+        await sendEmail(ownerEmail, mail.subject, mail.text);
+      }
     }
     await ctx.runMutation(internal.reminders.setAlertStatus, {
       id: appointmentId,
@@ -256,10 +407,9 @@ export const sendNewBookingAlert = internalAction({
 });
 
 /**
- * Post-appointment follow-up to the BARBER, scheduled one hour after the
- * slot: "Came or No-show?". Re-sent once two hours after the slot if the
- * barber has not answered (both texts fire from this one action via the
- * reNotify job). The client is never messaged here — the barber decides.
+ * Post-appointment follow-up to the BARBER (SMS + email fallback), one hour
+ * after the slot; re-sent once at two hours via the reNotify job. The
+ * client is never messaged here.
  */
 export const sendFollowUp = internalAction({
   args: { appointmentId: v.id("appointments") },
@@ -268,30 +418,42 @@ export const sendFollowUp = internalAction({
       id: appointmentId,
     });
     if (!appt) return;
-    if (appt.status === "cancelled") return;
-    // Barber already decided (dashboard tap or a previous re-notify fired
-    // after they confirmed). Nothing to do.
-    if (appt.followUpStatus === "cancelled") {
+    if (appt.status === "cancelled" || appt.followUpStatus === "cancelled") {
       return;
     }
-
     const shop = await ctx.runQuery(internal.reminders.getShop, {
       id: appt.barberId,
     });
-    if (!shop?.ownerPhone) return;
+    if (!shop) return;
 
-    const body = barberFollowUpBody(
-      appt.clientName,
-      localDay(appt.startAt, shop.ownerUtcOffset ?? 0),
-      localClock(appt.startAt, shop.ownerUtcOffset ?? 0),
-    );
-    const result = await sendText(shop.ownerPhone, body);
-    if (result === "error") {
-      await ctx.runMutation(internal.reminders.setFollowUpStatus, {
-        id: appointmentId,
-        status: "failed",
+    const day = localDay(appt.startAt, shop.ownerUtcOffset ?? 0);
+    const clock = localClock(appt.startAt, shop.ownerUtcOffset ?? 0);
+    let delivered = false;
+    if (shop.ownerPhone) {
+      const result = await sendText(
+        shop.ownerPhone,
+        barberFollowUpBody(appt.clientName, day, clock),
+      );
+      delivered = result === "sent" || result === "dry";
+    }
+    if (!delivered) {
+      const ownerEmail = await ctx.runQuery(internal.reminders.getOwnerEmail, {
+        barberId: shop._id,
       });
-      return;
+      if (ownerEmail) {
+        const mail = barberAlertEmail({
+          clientName: appt.clientName,
+          clientPhone: appt.clientPhone,
+          day,
+          clock,
+          dashboardUrl: `${shop.bookingBaseUrl}/dashboard`,
+        });
+        await sendEmail(
+          ownerEmail,
+          `Did ${appt.clientName} come? — answer needed`,
+          mail.text,
+        );
+      }
     }
     await ctx.runMutation(internal.reminders.setFollowUpStatus, {
       id: appointmentId,
@@ -301,8 +463,8 @@ export const sendFollowUp = internalAction({
 });
 
 /**
- * No-show rebook invitation to the CLIENT, fired by the barber's explicit
- * "No-show" action only. The client is never messaged automatically.
+ * No-show rebook invitation to the CLIENT — fired only by the barber's
+ * explicit "No-show" action. SMS with email fallback, opt-out respected.
  */
 export const sendRebookInvite = internalAction({
   args: { appointmentId: v.id("appointments") },
@@ -311,7 +473,6 @@ export const sendRebookInvite = internalAction({
       id: appointmentId,
     });
     if (!appt || appt.status !== "noShow") return;
-    if (!appt.smsConsentAt) return; // consent required for any client text
 
     const shop = await ctx.runQuery(internal.reminders.getShop, {
       id: appt.barberId,
@@ -320,16 +481,35 @@ export const sendRebookInvite = internalAction({
     const rebookUrl = appt.cancelToken
       ? `${shop.bookingBaseUrl}/b/${shop.slug}?rebook=${appt.cancelToken}`
       : "";
-    const body = clientRebookBody(
-      shop.shopName,
-      appt.clientName,
-      rebookUrl,
-    );
-    await sendText(appt.clientPhone, body);
+    const optedOut = appt.smsConsentAt
+      ? await ctx.runQuery(internal.reminders.isOptedOut, {
+          phone: appt.clientPhone,
+          barberId: appt.barberId,
+        })
+      : true;
+
+    if (appt.smsConsentAt && !optedOut) {
+      await sendText(
+        appt.clientPhone,
+        clientRebookBody(shop.shopName, appt.clientName, rebookUrl),
+      );
+      return;
+    }
+    const clientEmail = await ctx.runQuery(internal.reminders.getClientEmail, {
+      phone: appt.clientPhone,
+      barberId: appt.barberId,
+    });
+    if (clientEmail) {
+      await sendEmail(
+        clientEmail,
+        `Book a new date — ${shop.shopName}`,
+        clientRebookBody(shop.shopName, appt.clientName, rebookUrl),
+      );
+    }
   },
 });
 
-/* ── Shared internals ────────────────────────────────────────────────────── */
+/* ── Shared internals ────────────────────────────────────────────────── */
 
 /** Internal query used by the actions to fetch the appointment. */
 export const getAppointment = internalQuery({
@@ -341,6 +521,42 @@ export const getAppointment = internalQuery({
 export const getShop = internalQuery({
   args: { id: v.id("barbers") },
   handler: async (ctx, { id }) => ctx.db.get(id),
+});
+
+/** Internal: owner's account email (email fallback recipient). */
+export const getOwnerEmail = internalQuery({
+  args: { barberId: v.id("barbers") },
+  handler: async (ctx, { barberId }) => {
+    const shop = await ctx.db.get(barberId);
+    if (!shop) return null;
+    const user = await ctx.db.get(shop.ownerUserId);
+    return user?.email ?? null;
+  },
+});
+
+/** Internal: find a past client's email by phone at this shop. */
+export const getClientEmail = internalQuery({
+  args: { phone: v.string(), barberId: v.id("barbers") },
+  handler: async (ctx, { phone, barberId }) => {
+    const rows = await ctx.db
+      .query("appointments")
+      .withIndex("by_barber_and_date", (q) => q.eq("barberId", barberId))
+      .collect();
+    const match = rows.find((r) => r.clientPhone === phone && r.clientEmail);
+    return match?.clientEmail ?? null;
+  },
+});
+
+/** Internal: is this phone opted out of client texts at this shop? */
+export const isOptedOut = internalQuery({
+  args: { phone: v.string(), barberId: v.id("barbers") },
+  handler: async (ctx, { phone, barberId }) => {
+    const row = await ctx.db
+      .query("smsOptOuts")
+      .withIndex("by_phone", (q) => q.eq("phone", phone))
+      .unique();
+    return row?.barberId === barberId;
+  },
 });
 
 /** Internal: set the client-reminder status. */
@@ -404,12 +620,11 @@ export const setFollowUpStatus = internalMutation({
   },
 });
 
-/* ── Public: cancel via secret token (link inside the reminder SMS) ─────── */
+/* ── Public: cancel via secret token (link inside the reminder) ─────── */
 
 /**
  * Client self-cancellation from the reminder link. The token is a secret
- * generated at booking time; only appointments still pending can be
- * cancelled here.
+ * generated at booking time; only pending appointments can be cancelled.
  */
 export const cancelByToken = mutation({
   args: { token: v.string() },
@@ -442,9 +657,7 @@ export const cancelByToken = mutation({
 });
 
 /**
- * Cancel a booking's scheduled jobs, tolerating already-fired jobs. Plain
- * argument shape (instead of the full ctx/appt types) keeps this helper
- * usable from both public and internal mutations.
+ * Cancel a booking's scheduled jobs, tolerating already-fired jobs.
  */
 async function cancelScheduledJobs(
   scheduler: { cancel: (id: any) => Promise<void> },

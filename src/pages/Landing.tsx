@@ -179,7 +179,7 @@ export default function Landing() {
               variant="outline"
               className="rounded-full px-7"
             >
-              <a href="#why">Why reminders pay off</a>
+              <a href="/b/demo-barbershop">See a live booking page</a>
             </Button>
             </motion.div>
             <motion.p
@@ -403,9 +403,9 @@ export default function Landing() {
               Simple plans, built around messages
             </h2>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Every plan includes your booking link, unlimited appointments and
-              reminder messages by SMS &amp; WhatsApp. Pick the message volume
-              that matches your chairs.
+              Every plan includes your booking link, unlimited appointments,
+              email confirmations and reminder messages by SMS &amp; WhatsApp.
+              Pick the message volume that matches your chairs.
             </p>
           </div>
 

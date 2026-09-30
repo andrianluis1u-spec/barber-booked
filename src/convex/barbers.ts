@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 
 function slugify(input: string): string {
   return input
@@ -139,6 +140,144 @@ export const updateProfile = mutation({
     }
 
     await ctx.db.patch(shop._id, patch);
+  },
+});
+
+/**
+ * Signed-in barber: update core shop details — name, city, public link
+ * slug and the alert phone. Slug changes re-check uniqueness (excluding
+ * the shop itself) and keep the public URL consistent.
+ */
+export const updateShopDetails = mutation({
+  args: {
+    shopName: v.optional(v.string()),
+    city: v.optional(v.string()),
+    slug: v.optional(v.string()),
+    ownerPhone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in.");
+    const shop = await ctx.db
+      .query("barbers")
+      .withIndex("by_owner", (q) => q.eq("ownerUserId", userId))
+      .unique();
+    if (!shop) throw new Error("Create your shop profile first.");
+
+    const patch: Record<string, unknown> = {};
+
+    if (args.shopName !== undefined) {
+      const name = args.shopName.trim();
+      if (name.length < 2) throw new Error("Shop name is too short.");
+      patch.shopName = name.slice(0, 60);
+    }
+    if (args.city !== undefined) {
+      const city = args.city.trim();
+      if (city.length < 2) throw new Error("City is too short.");
+      patch.city = city.slice(0, 60);
+    }
+    if (args.ownerPhone !== undefined) {
+      const phone = args.ownerPhone.trim();
+      if (!/^\+?[1-9]\d{7,14}$/.test(phone)) {
+        throw new Error("Please enter a valid phone number, e.g. +15550102030.");
+      }
+      patch.ownerPhone = phone;
+    }
+    if (args.slug !== undefined && args.slug !== shop.slug) {
+      const slug = args.slug
+        .toLowerCase()
+        .trim()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 48);
+      if (slug.length < 3) {
+        throw new Error("Your link name must be at least 3 characters.");
+      }
+      const taken = await ctx.db
+        .query("barbers")
+        .withIndex("by_slug", (q) => q.eq("slug", slug))
+        .unique();
+      if (taken && taken._id !== shop._id) {
+        throw new Error("That link is already taken — try another.");
+      }
+      patch.slug = slug;
+    }
+
+    await ctx.db.patch(shop._id, patch);
+  },
+});
+
+/** Public: is a slug free (excluding one shop's current slug)? */
+export const slugAvailableExceptSelf = query({
+  args: { slug: v.string(), exceptSlug: v.string() },
+  handler: async (ctx, { slug, exceptSlug }) => {
+    const existing = await ctx.db
+      .query("barbers")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    return existing === null || existing.slug === exceptSlug;
+  },
+});
+
+/**
+ * Public (idempotent, safe to re-run): upsert the demo shop linked from
+ * the landing page. Creates a dedicated demo user on first run so the
+ * shop document has a valid owner.
+ */
+export const seedDemoShop = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const slug = "demo-barbershop";
+    const existing = await ctx.db
+      .query("barbers")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+
+    let ownerId = existing?.ownerUserId;
+    if (!ownerId) {
+      ownerId = await ctx.db.insert("users", {
+        email: "demo-shop@bookingreminded.app",
+        name: "Demo Barbershop",
+      });
+    }
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        shopName: "The Gentleman's Chair (Demo)",
+        tagline: "Classic cuts & hot towel shaves since 2009",
+        about:
+          "A small studio focused on precision cuts and unhurried service. Coffee is on the house — walk-ins welcome between bookings.",
+        address: "Mariahilfer Straße 12, 1060 Vienna",
+        mapsUrl: "https://maps.google.com/?q=Mariahilfer+Strasse+12+Vienna",
+        publicPhone: "+43 1 234 56 78",
+        accentColor: "#0F172A",
+      });
+      return existing._id;
+    }
+
+    return ctx.db.insert("barbers", {
+      ownerUserId: ownerId,
+      shopName: "The Gentleman's Chair (Demo)",
+      city: "Vienna",
+      slug,
+      ownerPhone: "+4367849829356",
+      ownerUtcOffset: -120, // Vienna summer time
+      bookingBaseUrl: "https://fabulous-dove-774.convex.site",
+      tagline: "Classic cuts & hot towel shaves since 2009",
+      about:
+        "A small studio focused on precision cuts and unhurried service. Coffee is on the house — walk-ins welcome between bookings.",
+      address: "Mariahilfer Straße 12, 1060 Vienna",
+      mapsUrl: "https://maps.google.com/?q=Mariahilfer+Strasse+12+Vienna",
+      publicPhone: "+43 1 234 56 78",
+      accentColor: "#0F172A",
+      slotMinutes: 30,
+      openHour: 9,
+      closeHour: 19,
+      closedWeekdays: [0],
+      bookingWindowDays: 14,
+    });
   },
 });
 

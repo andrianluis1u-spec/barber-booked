@@ -855,6 +855,267 @@ function ShopProfileEditor({ shop }: { shop: Doc<"barbers"> }) {
   );
 }
 
+/**
+ * Shop details editor — name, city, alert phone and the public link slug
+ * (with live availability check). Covers everything barbers ask to change
+ * after onboarding.
+ */
+function ShopDetailsEditor({ shop }: { shop: Doc<"barbers"> }) {
+  const [open, setOpen] = useState(false);
+  const updateShopDetails = useMutation(api.barbers.updateShopDetails);
+  const [shopName, setShopName] = useState(shop.shopName);
+  const [city, setCity] = useState(shop.city);
+  const [ownerPhone, setOwnerPhone] = useState(shop.ownerPhone);
+  const [slug, setSlug] = useState(shop.slug);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const slugTouched = slug !== shop.slug;
+  const slugFree = useQuery(
+    api.barbers.slugAvailableExceptSelf,
+    slugTouched && slug.length >= 3
+      ? { slug, exceptSlug: shop.slug }
+      : "skip",
+  );
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await updateShopDetails({
+        shopName,
+        city,
+        ownerPhone,
+        slug: slugTouched ? slug : undefined,
+      });
+      toast.success("Shop details saved.");
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="card-soft rounded-2xl border-border/70">
+      <CardContent className="p-4 sm:p-5">
+        <div className="flex items-center gap-4">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Store className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">Shop details</p>
+            <p className="text-xs text-muted-foreground">
+              Name, city, alert phone and your public link.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant={open ? "ghost" : "outline"}
+            className="rounded-full"
+            onClick={() => setOpen((o) => !o)}
+          >
+            {open ? "Close" : "Edit"}
+          </Button>
+        </div>
+
+        {open && (
+          <div className="mt-5 space-y-4 border-t border-border/60 pt-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="d-shopName">Shop name</Label>
+                <Input
+                  id="d-shopName"
+                  value={shopName}
+                  onChange={(e) => setShopName(e.target.value)}
+                  maxLength={60}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="d-city">City / area</Label>
+                <Input
+                  id="d-city"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  maxLength={60}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="d-ownerPhone">
+                Alert phone (bookings & follow-ups)
+              </Label>
+              <Input
+                id="d-ownerPhone"
+                type="tel"
+                value={ownerPhone}
+                onChange={(e) => setOwnerPhone(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="d-slug">Your booking link</Label>
+              <div className="flex items-center rounded-md border border-input">
+                <span className="pl-3 text-sm text-muted-foreground">/b/</span>
+                <Input
+                  id="d-slug"
+                  value={slug}
+                  onChange={(e) =>
+                    setSlug(
+                      e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
+                    )
+                  }
+                  className="border-0 shadow-none focus-visible:ring-0"
+                />
+              </div>
+              {slugTouched && (
+                <p
+                  className={cn(
+                    "text-xs",
+                    slugFree === false ? "text-destructive" : "text-primary",
+                  )}
+                >
+                  {slugFree === false
+                    ? "That link is already taken."
+                    : slugFree === undefined
+                      ? "Checking availability…"
+                      : "This link is available."}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Changing your link breaks the old one — share the new URL
+                everywhere afterwards.
+              </p>
+            </div>
+            {error && (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            <div className="flex justify-end">
+              <Button
+                className="rounded-full"
+                onClick={() => void handleSave()}
+                disabled={
+                  saving ||
+                  (slugTouched && slugFree === false) ||
+                  shopName.trim().length < 2 ||
+                  !isValidPhone(ownerPhone)
+                }
+              >
+                {saving ? "Saving…" : "Save details"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Setup checklist for brand-new shops: nudges the barber to personalize
+ * the page (logo, colors, hours) right after onboarding — so their public
+ * page looks great before they share the link.
+ */
+function SetupChecklist({ shop }: { shop: Doc<"barbers"> }) {
+  const items = [
+    { done: Boolean(shop.logoStorageId), label: "Upload your logo" },
+    { done: Boolean(shop.accentColor), label: "Pick your brand color" },
+    {
+      done: Boolean(shop.about || shop.address),
+      label: "Add your location & about text",
+    },
+    {
+      done: Boolean(
+        (shop.openHour ?? 9) !== 9 ||
+          (shop.closeHour ?? 20) !== 20 ||
+          (shop.closedWeekdays?.length ?? 0) > 0,
+      ),
+      label: "Set your opening hours",
+    },
+  ];
+  const remaining = items.filter((i) => !i.done);
+  if (remaining.length === 0) return null;
+
+  return (
+    <Card className="card-soft mt-4 rounded-2xl border-primary/25 bg-primary/5">
+      <CardContent className="p-4 sm:p-5">
+        <p className="text-sm font-semibold">
+          Finish setting up your page ({items.length - remaining.length}/
+          {items.length})
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Personalized pages get more bookings — two minutes is enough.
+        </p>
+        <ul className="mt-3 space-y-1.5">
+          {remaining.map((item) => (
+            <li
+              key={item.label}
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              <span className="size-1.5 rounded-full bg-primary/50" />
+              {item.label}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** This week's bookings, no-shows and the money they cost. */
+function WeekStatsCard() {
+  const stats = useQuery(api.appointments.weekStats, {});
+  if (!stats) return null;
+  return (
+    <Card className="card-soft mt-4 rounded-2xl border-border/70">
+      <CardContent className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4 sm:p-5">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Bookings · 7 days
+          </p>
+          <p className="mt-1 font-serif text-2xl font-semibold">
+            {stats.bookings}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Confirmed
+          </p>
+          <p className="mt-1 font-serif text-2xl font-semibold text-primary">
+            {stats.confirmed}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            No-shows · 7 days
+          </p>
+          <p
+            className={cn(
+              "mt-1 font-serif text-2xl font-semibold",
+              stats.noShow > 0 ? "text-destructive" : "text-foreground",
+            )}
+          >
+            {stats.noShow}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Revenue saved by reminders
+          </p>
+          <p className="mt-1 font-serif text-2xl font-semibold text-primary">
+            ≈ ${stats.noShowCost}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            value of chairs that did not sit empty
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const { user, isLoading, signOut } = useAuth();
   const [dayOffset, setDayOffset] = useState(0);
@@ -933,9 +1194,20 @@ export default function Dashboard() {
         {/* Unique booking link */}
         <ShopLinkCard slug={shop.slug} />
 
+        {/* This week's numbers — the product's value, in dollars */}
+        <WeekStatsCard />
+
         {/* Optional public profile (logo, about, location…) */}
         <div className="mt-4">
           <ShopProfileEditor shop={shop} />
+        </div>
+
+        {/* New-shop setup checklist */}
+        <SetupChecklist shop={shop} />
+
+        {/* Shop details (name / city / alert phone / link) */}
+        <div className="mt-4">
+          <ShopDetailsEditor shop={shop} />
         </div>
 
         {/* Page & booking customisation */}

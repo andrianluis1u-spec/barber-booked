@@ -90,6 +90,12 @@ const schema = defineSchema(
       endAt: v.number(), // slot end (epoch ms)
       clientName: v.string(),
       clientPhone: v.string(), // phone number is the essential piece
+      // Optional email — enables the email fallback for confirmations and
+      // reminders when SMS is unavailable (or the client opted out).
+      clientEmail: v.optional(v.string()),
+      // Coarse client IP captured at booking time for the public rate
+      // limit. Never exposed through any query.
+      bookingIp: v.optional(v.string()),
       // Epoch ms of the client's explicit SMS consent at booking time.
       // Presence means consent was given; the booking form requires it.
       smsConsentAt: v.optional(v.number()),
@@ -155,6 +161,14 @@ const schema = defineSchema(
       .index("by_status", ["status"])
       .index("by_reminder_status", ["reminderStatus"])
       .index("by_cancel_token", ["cancelToken"]),
+
+    // Clients who replied STOP to a reminder text. One row per phone per
+    // shop; checked before every client-facing SMS.
+    smsOptOuts: defineTable({
+      phone: v.string(),
+      barberId: v.id("barbers"),
+      createdAt: v.number(),
+    }).index("by_phone", ["phone"]),
   },
   {
     schemaValidation: false,

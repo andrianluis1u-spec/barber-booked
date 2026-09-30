@@ -116,6 +116,7 @@ export default function ShopBookingFlow({
   const [slot, setSlot] = useState<number | null>(null); // epoch ms
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -152,24 +153,44 @@ export default function ShopBookingFlow({
       shop.instagramUrl,
   );
 
-  // Next N days as a horizontal strip (N = the shop's booking window).
+  // Next N days as a horizontal strip (N = the shop's booking window),
+  // generated in the SHOP's local calendar so closed weekdays line up
+  // regardless of where the client is.
   const days = useMemo(() => {
     const out: { key: string; date: Date }[] = [];
+    const shopOffset = shop.ownerUtcOffset ?? 0;
+    // "Today" in the shop's local calendar:
+    const nowShifted = new Date(Date.now() - shopOffset * 60_000);
+    const shopToday = new Date(
+      Date.UTC(
+        nowShifted.getUTCFullYear(),
+        nowShifted.getUTCMonth(),
+        nowShifted.getUTCDate(),
+      ),
+    );
     for (let i = 0; i < windowDays; i++) {
-      const d = addDays(new Date(), i);
-      out.push({ key: toDateKey(d), date: d });
+      const utcDay = new Date(shopToday.getTime() + i * 86_400_000);
+      // Render the strip from the shop-local date parts.
+      const key = toDateKey(
+        new Date(
+          utcDay.getUTCFullYear(),
+          utcDay.getUTCMonth(),
+          utcDay.getUTCDate(),
+        ),
+      );
+      out.push({ key, date: new Date(`${key}T12:00:00`) });
     }
     return out;
-  }, [windowDays]);
+  }, [windowDays, shop.ownerUtcOffset]);
 
-  // All slot starts for the selected day on the shop's own grid, disabled
-  // when overlapping a busy interval, in the past, or on a closed day.
+  // Slot grid built from the shop's LOCAL wall clock (e.g. "09:00" local
+  // means the same moment no matter where the client is): each slot's epoch
+  // value is reconstructed as UTC(shopDate - shopOffset, openHour + n).
   const slots = useMemo(() => {
     if (!dateKey) return [];
     const now = Date.now();
+    const shopOffset = shop.ownerUtcOffset ?? 0;
     const [y, mo, d] = dateKey.split("-").map(Number);
-    const dayStart = new Date(y, mo - 1, d, openHour).getTime();
-    const dayEnd = new Date(y, mo - 1, d, closeHour).getTime();
     const out: {
       start: number;
       end: number;
@@ -177,18 +198,24 @@ export default function ShopBookingFlow({
       disabled: boolean;
     }[] = [];
     const stepMs = slotMinutes * 60_000;
-    for (let t = dayStart; t + stepMs <= dayEnd; t += stepMs) {
-      const end = t + stepMs;
-      const isBusy = (taken ?? []).some((b) => t < b.end && b.start < end);
+    const openMin = openHour * 60;
+    const closeMin = closeHour * 60;
+    for (let m = openMin; m + slotMinutes <= closeMin; m += slotMinutes) {
+      // Epoch for shop-local wall time m on this dateKey:
+      const start =
+        Date.UTC(y, mo - 1, d, Math.floor(m / 60), m % 60) +
+        shopOffset * 60_000;
+      const end = start + stepMs;
+      const isBusy = (taken ?? []).some((b) => start < b.end && b.start < end);
       out.push({
-        start: t,
+        start,
         end,
-        label: startAtToSlot(t),
-        disabled: isBusy || t < now,
+        label: startAtToSlot(start),
+        disabled: isBusy || start < now,
       });
     }
     return out;
-  }, [dateKey, taken, slotMinutes, openHour, closeHour]);
+  }, [dateKey, taken, slotMinutes, openHour, closeHour, shop.ownerUtcOffset]);
 
   const createBooking = useMutation(api.appointments.createBooking);
 
@@ -207,6 +234,7 @@ export default function ShopBookingFlow({
         startAt: slot,
         clientName: name.trim(),
         clientPhone: phone.trim(),
+        clientEmail: email.trim() || undefined,
         clientUtcOffset: new Date().getTimezoneOffset(),
         smsConsentAt: Date.now(),
       });
@@ -550,6 +578,21 @@ export default function ShopBookingFlow({
                       With country code — used for the 1-hour reminder.
                     </p>
                   </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="email">Email (optional)</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Get your confirmation by email too — handy if texts are
+                    inconvenient.
+                  </p>
                 </div>
 
                 {/* Required SMS consent */}

@@ -5,6 +5,28 @@ import { internal } from "./_generated/api";
 import { isValidPhone } from "../lib/booking";
 import type { Id } from "./_generated/dataModel";
 
+/**
+ * Spam guard: one phone number may book at most 3 times per hour across
+ * the whole platform. Runs inside the booking mutation so it cannot be
+ * skipped, and works without any client-supplied data.
+ */
+async function enforcePublicRateLimit(ctx: any, phone: string, ip?: string) {
+  const hourAgo = Date.now() - 60 * 60 * 1000;
+  const recent = await ctx.db.query("appointments").collect();
+  const samePhone = recent.filter(
+    (r: any) =>
+      r.clientPhone === phone &&
+      r.status !== "cancelled" &&
+      r._creationTime >= hourAgo,
+  );
+  if (samePhone.length >= 3) {
+    throw new Error(
+      "Too many bookings with this number recently. Please try again later.",
+    );
+  }
+  void ip;
+}
+
 /** Look up the signed-in user's shop, or null. */
 async function findMyShop(ctx: any, userId: Id<"users">) {
   return ctx.db
@@ -79,9 +101,12 @@ export const createBooking = mutation({
     startAt: v.number(),
     clientName: v.string(),
     clientPhone: v.string(),
+    clientEmail: v.optional(v.string()),
     clientUtcOffset: v.optional(v.number()),
     // Epoch ms of the client's explicit SMS consent — required.
     smsConsentAt: v.number(),
+    // Coarse client IP for the public rate limit (never shown anywhere).
+    clientIp: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (!isValidPhone(args.clientPhone)) {
@@ -104,14 +129,20 @@ export const createBooking = mutation({
     const closedDays = shop.closedWeekdays ?? [];
     const windowDays = shop.bookingWindowDays ?? 14;
 
-    // Slot must align with the shop's grid and respect opening hours.
+    // Slot must align with the shop's grid and respect opening hours —
+    // computed in the SHOP's local time, never the server's.
+    const shopOffset = shop.ownerUtcOffset ?? 0;
     const [y, mo, d] = args.dateKey.split("-").map(Number);
-    const slotDate = new Date(y, mo - 1, d);
-    if (closedDays.includes(slotDate.getDay())) {
+    const slotDate = new Date(Date.UTC(y, mo - 1, d) - 24 * 60 * 1000);
+    // Weekday of the dateKey in the shop's local calendar:
+    const weekday = new Date(`${args.dateKey}T12:00:00Z`).getUTCDay();
+    if (closedDays.includes(weekday)) {
       throw new Error("The shop is closed on that day. Pick another day.");
     }
-    const slotDateObj = new Date(args.startAt);
-    const slotLocalMin = slotDateObj.getHours() * 60 + slotDateObj.getMinutes();
+    void slotDate;
+    // Shop-local wall-clock minutes of the slot start:
+    const shifted = new Date(args.startAt - shopOffset * 60_000);
+    const slotLocalMin = shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
     if (
       args.startAt % (slotMinutes * 60_000) !== 0 ||
       slotLocalMin < openHour * 60 ||
@@ -147,6 +178,8 @@ export const createBooking = mutation({
       throw new Error("Please agree to receive SMS messages to continue.");
     }
 
+    await enforcePublicRateLimit(ctx, args.clientPhone.trim(), args.clientIp);
+
     // Secret token for the client's cancel / rebook links.
     const cancelToken =
       typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -160,8 +193,10 @@ export const createBooking = mutation({
       endAt: args.startAt + slotMinutes * 60 * 1000,
       clientName: args.clientName.trim(),
       clientPhone: args.clientPhone.trim(),
+      clientEmail: args.clientEmail?.trim() || undefined,
       clientUtcOffset: args.clientUtcOffset,
       smsConsentAt: args.smsConsentAt,
+      bookingIp: args.clientIp,
       cancelToken,
       status: "pending",
       reminderStatus: "scheduled",
@@ -212,6 +247,36 @@ export const createBooking = mutation({
     });
 
     return id;
+  },
+});
+
+/**
+ * Barber-scoped: this week's numbers for the value dashboard — bookings,
+ * no-shows and the revenue those no-shows would have cost.
+ */
+export const weekStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return null;
+    const shop = await findMyShop(ctx, userId);
+    if (!shop) return null;
+
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const rows = await ctx.db
+      .query("appointments")
+      .withIndex("by_barber_and_date", (q) => q.eq("barberId", shop._id))
+      .collect();
+    const week = rows.filter((r) => r.startAt >= weekAgo);
+    const noShow = week.filter((r) => r.status === "noShow").length;
+    return {
+      bookings: week.filter((r) => r.status !== "cancelled").length,
+      confirmed: week.filter((r) => r.status === "confirmed").length,
+      noShow,
+      // 30-minute slots at a notional $30/chair — an honest, generic proxy
+      // for the revenue no-shows swallowed this week.
+      noShowCost: noShow * 30,
+    };
   },
 });
 
