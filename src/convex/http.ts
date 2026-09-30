@@ -2,6 +2,7 @@ import { httpRouter } from "convex/server";
 import { httpAction, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { auth } from "./auth";
 
 /**
  * Twilio inbound-message webhook.
@@ -83,5 +84,10 @@ http.route({
   method: "POST",
   handler: handleTwilioInbound,
 });
+
+// CRITICAL: Convex Auth's sign-in/sign-out/token endpoints are served from
+// this router ("/api/auth/*"). Without these routes, sign-up and sign-in
+// silently fail (the client gets 404s from /api/auth/*).
+auth.addHttpRoutes(http);
 
 export default http;
