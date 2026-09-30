@@ -1,42 +1,25 @@
-import { useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
   BellRing,
-  CalendarDays,
   Check,
-  Clock,
   Link2,
   MessageSquareText,
   Scissors,
   ShieldCheck,
   Smartphone,
-  Sparkles,
 } from "lucide-react";
 import { Link } from "react-router";
-import { api } from "@/convex/_generated/api";
 import logo from "@/assets/logo.svg";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-const STEPS = [
-  {
-    icon: CalendarDays,
-    title: "Choose your time",
-    body: "Select a date and reserve an open slot. Availability is always current, so there is no waiting on a reply.",
-  },
-  {
-    icon: Smartphone,
-    title: "Leave your details",
-    body: "Your name and phone number, with a tick confirming you're happy to receive texts. No account, no downloads — the essentials only.",
-  },
-  {
-    icon: BellRing,
-    title: "Arrive assured",
-    body: "The barber receives your appointment immediately, and a reminder reaches you an hour before your time.",
-  },
-];
+/**
+ * The one and only page of the brand: who we are, what the barber gets
+ * (one generated booking link) and demo pricing. Clients never land here —
+ * they arrive at a barber's /b/<slug> link directly.
+ */
 
 const fadeUp = {
   initial: { opacity: 0, y: 24 },
@@ -44,9 +27,66 @@ const fadeUp = {
   viewport: { once: true, margin: "-80px" },
 };
 
-export default function Landing() {
-  const shops = useQuery(api.barbers.listAll, {});
+const PRICING = [
+  {
+    name: "Solo barber",
+    price: "$9",
+    cadence: "/month",
+    tagline: "One chair, one link, everything included.",
+    features: [
+      "Your own booking link",
+      "Unlimited appointments",
+      "SMS reminders & booking alerts",
+      "WhatsApp reminders",
+      "No-show follow-ups",
+      "Came / No-show tracking",
+    ],
+    cta: "Start free",
+    highlight: false,
+  },
+  {
+    name: "Barbershop",
+    price: "$24",
+    cadence: "/month",
+    tagline: "For shops where every chair stays busy.",
+    features: [
+      "Everything in Solo",
+      "Multiple barbers, one shop page",
+      "Shared & individual calendars",
+      "Client booking history",
+      "Priority support",
+    ],
+    cta: "Start free",
+    highlight: true,
+  },
+  {
+    name: "Chain",
+    price: "$59",
+    cadence: "/month",
+    tagline: "Several locations, one standard of reminders.",
+    features: [
+      "Everything in Barbershop",
+      "Multi-location links",
+      "Central owner dashboard",
+      "Custom SMS sender name",
+      "Onboarding for your team",
+    ],
+    cta: "Start free",
+    highlight: false,
+  },
+];
 
+/** Demo pricing note — real billing is not wired up yet. */
+function PricingNote() {
+  return (
+    <p className="mt-6 text-center text-xs leading-5 text-muted-foreground">
+      Demo pricing — shown as an example while the product is in preview. Every
+      plan starts with a fully working free link.
+    </p>
+  );
+}
+
+export default function Landing() {
   return (
     <div className="page-glow min-h-screen">
       {/* ── Header ─────────────────────────────────────────────── */}
@@ -55,36 +95,29 @@ export default function Landing() {
           <a href="/" className="flex items-center gap-2.5">
             <img src={logo} alt="" className="size-8 rounded-lg" />
             <span className="text-[15px] font-semibold tracking-tight">
-              Barber Booked
+              Booking Reminded
             </span>
           </a>
           <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-            <a className="transition-colors hover:text-foreground" href="#how">
+            <a
+              className="transition-colors hover:text-foreground"
+              href="#how"
+            >
               How it works
             </a>
-            <a className="transition-colors hover:text-foreground" href="#shops">
-              Shops
-            </a>
-            <a className="transition-colors hover:text-foreground" href="#barber">
-              For the barber
+            <a
+              className="transition-colors hover:text-foreground"
+              href="#pricing"
+            >
+              Pricing
             </a>
           </nav>
-          <div className="flex items-center gap-2">
-            <Button
-              asChild
-              variant="ghost"
-              size="sm"
-              className="hidden sm:inline-flex"
-            >
-              <Link to="/dashboard">Barber access</Link>
-            </Button>
-            <Button asChild size="sm" className="rounded-full">
-              <Link to="/#shops">
-                Find a shop
-                <ArrowRight className="ml-1 size-4" />
-              </Link>
-            </Button>
-          </div>
+          <Button asChild size="sm" className="rounded-full">
+            <Link to="/dashboard">
+              Generate your link
+              <ArrowRight className="ml-1 size-4" />
+            </Link>
+          </Button>
         </div>
       </header>
 
@@ -101,8 +134,8 @@ export default function Landing() {
                 variant="outline"
                 className="mb-5 gap-1.5 rounded-full border-primary/25 bg-primary/5 px-3 py-1 text-primary"
               >
-                <Sparkles className="size-3.5" />
-                The booking platform for barbershops
+                <Scissors className="size-3.5" />
+                For barbershops that hate empty chairs
               </Badge>
             </motion.div>
             <motion.h1
@@ -111,8 +144,8 @@ export default function Landing() {
               transition={{ duration: 0.55, delay: 0.08 }}
               className="font-serif text-4xl font-semibold leading-[1.08] tracking-tight text-balance sm:text-5xl lg:text-6xl"
             >
-              Every barber gets a booking{" "}
-              <span className="text-primary">link of their own</span>.
+              One link. Booked chairs.{" "}
+              <span className="text-primary">Nobody forgets.</span>
             </motion.h1>
             <motion.p
               initial={{ opacity: 0, y: 20 }}
@@ -120,10 +153,10 @@ export default function Landing() {
               transition={{ duration: 0.55, delay: 0.16 }}
               className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8"
             >
-              Barber Booked gives each barbershop its own page and a unique
-              link to share. Clients reserve a chair in under a minute, the
-              barber watches bookings arrive live, and every client is texted a
-              reminder an hour before their time.
+              Booking Reminded gives every barbershop its own booking page and
+              a single link to share. Clients pick a chair in under a minute;
+              your phone gets every booking, and their phone gets the reminder
+              — one hour before, every time.
             </motion.p>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -133,7 +166,7 @@ export default function Landing() {
             >
               <Button asChild size="lg" className="rounded-full px-7">
                 <Link to="/dashboard">
-                  Claim your booking link
+                  Generate your booking link
                   <ArrowRight className="ml-1.5 size-4" />
                 </Link>
               </Button>
@@ -143,7 +176,7 @@ export default function Landing() {
                 variant="outline"
                 className="rounded-full px-7"
               >
-                <Link to="#shops">Browse the shops</Link>
+                <a href="#pricing">See the pricing</a>
               </Button>
             </motion.div>
             <motion.p
@@ -153,11 +186,11 @@ export default function Landing() {
               className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"
             >
               <ShieldCheck className="size-4 text-primary" />
-              Complimentary for clients · takes under a minute
+              Free to start · no app for clients to install
             </motion.p>
           </div>
 
-          {/* Booking preview card */}
+          {/* Link card preview */}
           <motion.div
             initial={{ opacity: 0, y: 32, rotate: 1.5 }}
             animate={{ opacity: 1, y: 0, rotate: 0 }}
@@ -169,20 +202,32 @@ export default function Landing() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Next available sitting
+                    Your booking link
                   </p>
                   <Badge className="rounded-full bg-primary/10 text-primary hover:bg-primary/10">
-                    Today
+                    Live in 2 minutes
                   </Badge>
                 </div>
-                <p className="mt-2 font-serif text-3xl font-semibold">
-                  4:30 <span className="text-lg text-muted-foreground">PM</span>
+                <p className="mt-3 break-all rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 font-mono text-sm font-medium text-foreground">
+                  booking-reminded.com/b/your-shop
                 </p>
                 <div className="mt-5 space-y-3">
                   {[
-                    { icon: Clock, label: "Chair reserved", meta: "30 minutes, straight from the link" },
-                    { icon: BellRing, label: "Reminder", meta: "One hour before" },
-                    { icon: MessageSquareText, label: "Barber notified", meta: "Immediately, by text" },
+                    {
+                      icon: Smartphone,
+                      label: "Client books from the link",
+                      meta: "Name, phone, done — no account",
+                    },
+                    {
+                      icon: MessageSquareText,
+                      label: "You get the booking by text",
+                      meta: "Client name & number, instantly",
+                    },
+                    {
+                      icon: BellRing,
+                      label: "Client gets reminded",
+                      meta: "One hour before — with a cancel link",
+                    },
                   ].map((row) => (
                     <div
                       key={row.label}
@@ -202,7 +247,10 @@ export default function Landing() {
                   ))}
                 </div>
                 <Button asChild className="mt-5 w-full rounded-full">
-                  <Link to="/dashboard">Reserve this sitting</Link>
+                  <Link to="/dashboard">
+                    <Link2 className="mr-1.5 size-4" />
+                    Claim this link
+                  </Link>
                 </Button>
               </CardContent>
             </Card>
@@ -218,11 +266,27 @@ export default function Landing() {
               How it works
             </p>
             <h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
-              Three quiet steps between intention and appointment
+              From link to chair in three quiet steps
             </h2>
           </div>
           <div className="mt-12 grid gap-6 md:grid-cols-3">
-            {STEPS.map((step, i) => (
+            {[
+              {
+                icon: Link2,
+                title: "Generate your link",
+                body: "Sign up, name your shop, and your personal booking page goes live instantly — logo, location and all.",
+              },
+              {
+                icon: Smartphone,
+                title: "Clients book themselves",
+                body: "They open your link, pick a free time and leave their name and number. No calls, no DMs, no double bookings.",
+              },
+              {
+                icon: BellRing,
+                title: "Everyone gets reminded",
+                body: "Your phone pings for every new booking. Their phone gets a reminder an hour before — with a cancel link if plans change.",
+              },
+            ].map((step, i) => (
               <motion.div
                 key={step.title}
                 {...fadeUp}
@@ -252,185 +316,146 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Shop directory ────────────────────────────────────────── */}
-      <section id="shops" className="border-t border-border/60">
+      {/* ── Pricing ────────────────────────────────────────────── */}
+      <section id="pricing" className="border-t border-border/60">
         <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div className="max-w-2xl">
-              <p className="text-sm font-medium uppercase tracking-wider text-primary">
-                On the platform
-              </p>
-              <h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
-                Shops taking bookings today
-              </h2>
-            </div>
-          </div>
-          {shops === undefined ? (
-            <p className="mt-10 text-sm text-muted-foreground">Loading shops…</p>
-          ) : shops.length === 0 ? (
-            <p className="mt-10 max-w-2xl text-sm leading-6 text-muted-foreground">
-              The first shops are setting up their pages now. Claim your link
-              and be among them.
-            </p>
-          ) : (
-            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {shops.map((shop, i) => (
-                <motion.div
-                  key={shop._id}
-                  {...fadeUp}
-                  transition={{ duration: 0.45, delay: i * 0.06 }}
-                >
-                  <Link to={`/b/${shop.slug}`} className="block h-full">
-                    <Card className="card-soft group h-full rounded-2xl border-border/70 transition-colors hover:border-primary/40">
-                      <CardContent className="p-5">
-                        <div className="flex items-center gap-3">
-                          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 font-serif text-base font-semibold text-primary">
-                            {shop.shopName.slice(0, 1)}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold">
-                              {shop.shopName}
-                            </p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {shop.city}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="mt-4 flex items-center justify-between">
-                          <span className="truncate font-mono text-xs text-muted-foreground">
-                            /b/{shop.slug}
-                          </span>
-                          <span className="ml-3 inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary">
-                            Book
-                            <ArrowRight className="size-3" />
-                          </span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ── For barbers ────────────────────────────────────────── */}
-      <section id="barber" className="border-t border-border/60 bg-muted/30">
-        <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:items-center">
-          <div>
+          <div className="mx-auto max-w-2xl text-center">
             <p className="text-sm font-medium uppercase tracking-wider text-primary">
-              For the barber
+              Pricing
             </p>
             <h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
-              The day's schedule, kept to one standard
+              One link, one price, zero surprises
             </h2>
-            <ul className="mt-8 space-y-4">
-              {[
-                "Every appointment reaches your dashboard the moment it is made",
-                "You get a text with the client's name and number the second they book",
-                "One hour after each appointment, a Came / No-show nudge lands on your phone",
-              ].map((line) => (
-                <li key={line} className="flex items-start gap-3">
-                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                    <Check className="size-3 text-primary" />
-                  </span>
-                  <span className="text-[15px] leading-7 text-muted-foreground">
-                    {line}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <Button asChild size="lg" className="mt-8 rounded-full px-7">
-              <Link to="/dashboard">
-                Claim your booking link
-                <ArrowRight className="ml-1.5 size-4" />
-              </Link>
-            </Button>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              SMS + WhatsApp reminders included in every plan. Start with a
+              free link — upgrade when your chairs fill up.
+            </p>
           </div>
 
-          {/* Dashboard preview */}
-          <motion.div
-            {...fadeUp}
-            transition={{ duration: 0.6 }}
-            className="relative mx-auto w-full max-w-md"
-          >
-            <div className="absolute -inset-6 rounded-[2rem] bg-primary/5 blur-2xl" />
-            <Card className="card-soft-lg relative rounded-3xl border-border/70">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold">Today · Thursday</p>
-                  <Badge
-                    variant="outline"
-                    className="rounded-full border-primary/25 text-primary"
-                  >
-                    Five appointments
-                  </Badge>
-                </div>
-                <div className="mt-4 space-y-2.5">
-                  {[
-                    { t: "09:30", n: "Marco D.", m: "Booked via your link", ok: true },
-                    { t: "11:00", n: "Amine K.", m: "Booked via your link", ok: true },
-                    { t: "13:30", n: "Sofia R.", m: "Booked via your link", ok: false },
-                    { t: "16:00", n: "Louis P.", m: "Booked via your link", ok: false },
-                  ].map((r) => (
-                    <div
-                      key={r.t}
-                      className="flex items-center gap-3 rounded-xl border border-border/70 px-3.5 py-2.5"
+          <div className="mt-12 grid gap-5 md:grid-cols-3">
+            {PRICING.map((plan, i) => (
+              <motion.div
+                key={plan.name}
+                {...fadeUp}
+                transition={{ duration: 0.5, delay: i * 0.08 }}
+              >
+                <Card
+                  className={
+                    "card-soft relative h-full rounded-2xl border-border/70 " +
+                    (plan.highlight
+                      ? "border-primary/40 ring-2 ring-primary/20"
+                      : "")
+                  }
+                >
+                  {plan.highlight && (
+                    <Badge className="absolute -top-2.5 left-5 rounded-full bg-primary text-primary-foreground hover:bg-primary">
+                      Most popular
+                    </Badge>
+                  )}
+                  <CardContent className="flex h-full flex-col p-6">
+                    <p className="text-sm font-semibold">{plan.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {plan.tagline}
+                    </p>
+                    <p className="mt-4 font-serif text-4xl font-semibold">
+                      {plan.price}
+                      <span className="ml-1 text-sm font-normal text-muted-foreground">
+                        {plan.cadence}
+                      </span>
+                    </p>
+                    <ul className="mt-5 flex-1 space-y-2.5">
+                      {plan.features.map((f) => (
+                        <li key={f} className="flex items-start gap-2.5">
+                          <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                            <Check className="size-3 text-primary" />
+                          </span>
+                          <span className="text-sm leading-5 text-muted-foreground">
+                            {f}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <Button
+                      asChild
+                      className="mt-6 w-full rounded-full"
+                      variant={plan.highlight ? "default" : "outline"}
                     >
-                      <span className="font-mono text-xs font-medium text-muted-foreground">
-                        {r.t}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{r.n}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {r.m}
-                        </p>
-                      </div>
-                      <span
-                        className={
-                          "ml-auto rounded-full px-2 py-0.5 text-[11px] font-medium " +
-                          (r.ok
-                            ? "bg-primary/10 text-primary"
-                            : "bg-muted text-muted-foreground")
-                        }
-                      >
-                        {r.ok ? "Confirmed" : "Pending"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+                      <Link to="/dashboard">
+                        {plan.cta}
+                        <ArrowRight className="ml-1.5 size-4" />
+                      </Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+          <PricingNote />
         </div>
       </section>
 
       {/* ── CTA ────────────────────────────────────────────────── */}
-      <section className="border-t border-border/60">
+      <section className="border-t border-border/60 bg-muted/30">
         <div className="mx-auto w-full max-w-6xl px-4 py-24 text-center sm:px-6">
           <h2 className="mx-auto max-w-2xl font-serif text-3xl font-semibold tracking-tight text-balance sm:text-5xl">
-            Your link. Your chairs. Fully booked.
-          </h2>            <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-            Set up your booking page in minutes and share it with every client
-            — reminders, confirmations and no-show tracking included.
+            Your link is waiting. Your chairs won't fill themselves.
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
+            Generate your booking page now — reminders, confirmations and
+            no-show tracking included from the first booking.
           </p>
           <Button asChild size="lg" className="mt-8 rounded-full px-8">
             <Link to="/dashboard">
-              Claim your booking link
+              Generate your booking link
               <ArrowRight className="ml-1.5 size-4" />
             </Link>
           </Button>
         </div>
       </section>
 
-      {/* ── Footer ─────────────────────────────────────────────── */}
-      <footer className="border-t border-border/60 py-8">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 text-sm text-muted-foreground sm:px-6">
-          <p>© {new Date().getFullYear()} Barber Booked · All rights reserved</p>
-          <p>
-            The appointment platform for modern barbershops
-          </p>
+      {/* ── Footer / brand info ────────────────────────────────── */}
+      <footer className="border-t border-border/60 py-10">
+        <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+          <div className="flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-2.5">
+              <img src={logo} alt="" className="size-7 rounded-lg" />
+              <div>
+                <p className="text-sm font-semibold tracking-tight">
+                  Booking Reminded
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  One link. Booked chairs. Nobody forgets.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+              <a
+                href="#how"
+                className="transition-colors hover:text-foreground"
+              >
+                How it works
+              </a>
+              <a
+                href="#pricing"
+                className="transition-colors hover:text-foreground"
+              >
+                Pricing
+              </a>
+              <Link
+                to="/dashboard"
+                className="transition-colors hover:text-foreground"
+              >
+                For barbers
+              </Link>
+            </div>
+          </div>
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-6 text-xs text-muted-foreground">
+            <p>
+              © {new Date().getFullYear()} Booking Reminded. All rights
+              reserved.
+            </p>
+            <p>SMS &amp; WhatsApp appointment reminders for barbershops.</p>
+          </div>
         </div>
       </footer>
     </div>

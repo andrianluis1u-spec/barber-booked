@@ -116,7 +116,7 @@ function barberNewBookingBody(
 ): string {
   return (
     `New booking: ${clientName} (${clientPhone}) — ${day} at ${clock}. ` +
-    `Manage it in your Barber Booked dashboard.`
+    `Manage it in your Booking Reminded dashboard.`
   );
 }
 
@@ -127,7 +127,7 @@ function barberFollowUpBody(
 ): string {
   return (
     `${clientName} (${day} at ${clock}) — did they come? ` +
-    `Answer in your Barber Booked dashboard.`
+    `Answer in your Booking Reminded dashboard.`
   );
 }
 

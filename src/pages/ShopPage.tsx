@@ -35,12 +35,11 @@ export default function ShopPage() {
             </h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               The page <span className="font-mono text-xs">/b/{slug}</span>{" "}
-              isn't connected to a barbershop. Check the link with your barber,
-              or explore the shops on Barber Booked.
+              isn't connected to a barbershop. Check the link with your barber.
             </p>
             <Button asChild className="mt-6 rounded-full">
               <Link to="/">
-                Visit Barber Booked
+                Visit Booking Reminded
                 <ArrowRight className="ml-1.5 size-4" />
               </Link>
             </Button>

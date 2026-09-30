@@ -59,6 +59,90 @@ export const myShop = query({
 });
 
 /**
+ * Public: resolve a stored logo image into a URL the client can load.
+ * Uses an internal action-style URL via getFileUrl equivalent — Convex file
+ * storage URLs need an action, so we expose the storage id and let the
+ * client fetch through the `logoUrl` query below.
+ */
+export const logoUrl = query({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, { storageId }) => {
+    return await ctx.storage.getUrl(storageId);
+  },
+});
+
+/**
+ * Signed-in barber: update the optional public profile shown on the
+ * booking page. Ownership enforced via the signed-in user's shop.
+ */
+export const updateProfile = mutation({
+  args: {
+    tagline: v.optional(v.string()),
+    about: v.optional(v.string()),
+    address: v.optional(v.string()),
+    mapsUrl: v.optional(v.string()),
+    publicPhone: v.optional(v.string()),
+    instagramUrl: v.optional(v.string()),
+    logoStorageId: v.optional(v.union(v.id("_storage"), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in.");
+    const shop = await ctx.db
+      .query("barbers")
+      .withIndex("by_owner", (q) => q.eq("ownerUserId", userId))
+      .unique();
+    if (!shop) throw new Error("Create your shop profile first.");
+
+    const patch: Record<string, unknown> = {};
+    const clamp = (s: string | undefined, max: number) => {
+      const t = s?.trim();
+      return t ? t.slice(0, max) : undefined;
+    };
+    const tagline = clamp(args.tagline, 90);
+    if (args.tagline !== undefined) patch.tagline = tagline;
+    const about = clamp(args.about, 600);
+    if (args.about !== undefined) patch.about = about;
+    const address = clamp(args.address, 160);
+    if (args.address !== undefined) patch.address = address;
+    const mapsUrl = clamp(args.mapsUrl, 400);
+    if (args.mapsUrl !== undefined) patch.mapsUrl = mapsUrl;
+    const publicPhone = clamp(args.publicPhone, 24);
+    if (args.publicPhone !== undefined) {
+      if (publicPhone && !/^\+?[\d\s-]{7,20}$/.test(publicPhone)) {
+        throw new Error("Please enter a valid public phone number.");
+      }
+      patch.publicPhone = publicPhone;
+    }
+    const instagramUrl = clamp(args.instagramUrl, 200);
+    if (args.instagramUrl !== undefined) {
+      if (instagramUrl && !/^(https?:\/\/)?(www\.)?instagram\.com\//i.test(instagramUrl)) {
+        throw new Error("Instagram link must point to instagram.com.");
+      }
+      // Normalize to a full URL for the anchor on the public page.
+      patch.instagramUrl = instagramUrl
+        ? instagramUrl.startsWith("http")
+          ? instagramUrl
+          : `https://${instagramUrl}`
+        : undefined;
+    }
+    if (args.logoStorageId !== undefined) {
+      // Replace or remove: clean up the previous logo file so storage does
+      // not fill with orphans.
+      if (
+        shop.logoStorageId &&
+        shop.logoStorageId !== (args.logoStorageId ?? undefined)
+      ) {
+        await ctx.storage.delete(shop.logoStorageId);
+      }
+      patch.logoStorageId = args.logoStorageId ?? undefined;
+    }
+
+    await ctx.db.patch(shop._id, patch);
+  },
+});
+
+/**
  * Signed-in barber: create my shop with a unique link slug. The barber's
  * own mobile number is required — it receives the new-booking alerts and
  * the post-appointment follow-ups.

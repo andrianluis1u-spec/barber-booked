@@ -55,6 +55,16 @@ const schema = defineSchema(
       // Public origin of the booking app (captured at onboarding), used to
       // build links inside SMS messages.
       bookingBaseUrl: v.string(),
+      // ── Optional public profile (shown on the barber's /b/<slug> page).
+      // logoStorageId points at a logo image in Convex file storage.
+      logoStorageId: v.optional(v.id("_storage")),
+      // Short brand line under the shop name, e.g. "Classic cuts since 2009".
+      tagline: v.optional(v.string()),
+      about: v.optional(v.string()),
+      address: v.optional(v.string()),
+      mapsUrl: v.optional(v.string()),
+      publicPhone: v.optional(v.string()),
+      instagramUrl: v.optional(v.string()),
     }).index("by_slug", ["slug"]).index("by_owner", ["ownerUserId"]),
 
     // Bookings created by clients from a barber's unique booking link.

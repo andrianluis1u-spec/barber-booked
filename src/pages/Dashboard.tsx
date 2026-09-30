@@ -7,20 +7,25 @@ import {
   Check,
   Clock,
   Copy,
+  ImageUp,
   Link2,
   LogOut,
   Phone,
   Scissors,
+  Store,
+  Trash2,
   UserX,
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { isValidPhone, startAtToSlot, toDateKey } from "@/lib/booking";
 import { cn } from "@/lib/utils";
@@ -297,6 +302,279 @@ function ShopLinkCard({ slug }: { slug: string }) {
   );
 }
 
+/**
+ * Optional public profile editor — everything here appears on the barber's
+ * /b/<slug> page above the booking flow. All fields are optional; a field
+ * left empty simply doesn't show on the public page.
+ */
+function ShopProfileEditor({ shop }: { shop: Doc<"barbers"> }) {
+  const [open, setOpen] = useState(false);
+  const updateProfile = useMutation(api.barbers.updateProfile);
+  const generateUploadUrl = useMutation(api.files.generateUploadUrl);
+
+  const [tagline, setTagline] = useState(shop.tagline ?? "");
+  const [about, setAbout] = useState(shop.about ?? "");
+  const [address, setAddress] = useState(shop.address ?? "");
+  const [mapsUrl, setMapsUrl] = useState(shop.mapsUrl ?? "");
+  const [publicPhone, setPublicPhone] = useState(shop.publicPhone ?? "");
+  const [instagramUrl, setInstagramUrl] = useState(shop.instagramUrl ?? "");
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const logoUrl = useQuery(
+    api.barbers.logoUrl,
+    shop.logoStorageId ? { storageId: shop.logoStorageId } : "skip",
+  );
+
+  async function handleLogoChange(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Logo must be under 2 MB.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const url = await generateUploadUrl();
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
+      await updateProfile({ logoStorageId: storageId });
+      toast.success("Logo updated.");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Logo upload failed.",
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleLogoRemove() {
+    setSaving(true);
+    try {
+      await updateProfile({ logoStorageId: null });
+      toast.success("Logo removed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await updateProfile({
+        tagline: tagline.trim() || undefined,
+        about: about.trim() || undefined,
+        address: address.trim() || undefined,
+        mapsUrl: mapsUrl.trim() || undefined,
+        publicPhone: publicPhone.trim() || undefined,
+        instagramUrl: instagramUrl.trim() || undefined,
+      });
+      toast.success("Profile saved — your booking page is updated.");
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const filled = [
+    shop.tagline,
+    shop.about,
+    shop.address,
+    shop.mapsUrl,
+    shop.publicPhone,
+    shop.instagramUrl,
+    shop.logoStorageId,
+  ].filter(Boolean).length;
+
+  return (
+    <Card className="card-soft rounded-2xl border-border/70">
+      <CardContent className="p-4 sm:p-5">
+        <div className="flex items-center gap-4">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Store className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">Your booking page profile</p>
+            <p className="text-xs text-muted-foreground">
+              {filled > 0
+                ? `${filled} of 7 details filled in — clients see them above your booking form.`
+                : "Optional — add a logo, location and more so clients recognise you."}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant={open ? "ghost" : "outline"}
+            className="rounded-full"
+            onClick={() => setOpen((o) => !o)}
+          >
+            {open ? "Close" : "Edit profile"}
+          </Button>
+        </div>
+
+        {open && (
+          <div className="mt-5 space-y-4 border-t border-border/60 pt-5">
+            {/* Logo */}
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-muted">
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt="Shop logo"
+                    className="size-full object-cover"
+                  />
+                ) : (
+                  <Scissors className="size-6 text-muted-foreground" />
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="logo-upload" className="text-sm">
+                  Shop logo (optional)
+                </Label>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="rounded-full"
+                    disabled={uploading}
+                    onClick={() =>
+                      document.getElementById("logo-upload")?.click()
+                    }
+                  >
+                    <ImageUp className="mr-1.5 size-3.5" />
+                    {uploading ? "Uploading…" : "Upload image"}
+                  </Button>
+                  {shop.logoStorageId && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="text-muted-foreground"
+                      disabled={saving || uploading}
+                      onClick={() => void handleLogoRemove()}
+                    >
+                      <Trash2 className="size-3.5" />
+                      Remove
+                    </Button>
+                  )}
+                </div>
+                <input
+                  id="logo-upload"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    void handleLogoChange(f);
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  PNG, JPG or WebP, up to 2 MB.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="tagline">Tagline</Label>
+                <Input
+                  id="tagline"
+                  value={tagline}
+                  onChange={(e) => setTagline(e.target.value)}
+                  placeholder="Classic cuts since 2009"
+                  maxLength={90}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="publicPhone">Public phone (optional)</Label>
+                <Input
+                  id="publicPhone"
+                  type="tel"
+                  value={publicPhone}
+                  onChange={(e) => setPublicPhone(e.target.value)}
+                  placeholder="+43 678 498 2935"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="about">About the shop</Label>
+              <Textarea
+                id="about"
+                value={about}
+                onChange={(e) => setAbout(e.target.value)}
+                placeholder="A couple of lines about the shop, the team, the vibe…"
+                rows={3}
+                maxLength={600}
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="address">Address</Label>
+                <Input
+                  id="address"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Mariahilfer Straße 12, 1060 Vienna"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="mapsUrl">Google Maps link (optional)</Label>
+                <Input
+                  id="mapsUrl"
+                  value={mapsUrl}
+                  onChange={(e) => setMapsUrl(e.target.value)}
+                  placeholder="https://maps.google.com/…"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="instagramUrl">Instagram (optional)</Label>
+              <Input
+                id="instagramUrl"
+                value={instagramUrl}
+                onChange={(e) => setInstagramUrl(e.target.value)}
+                placeholder="instagram.com/yourshop"
+              />
+            </div>
+
+            {error && (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
+                {error}
+              </p>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                className="rounded-full"
+                onClick={() => void handleSave()}
+                disabled={saving || uploading}
+              >
+                {saving ? "Saving…" : "Save profile"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const { user, isLoading, signOut } = useAuth();
   const [dayOffset, setDayOffset] = useState(0);
@@ -374,6 +652,11 @@ export default function Dashboard() {
       <main className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6">
         {/* Unique booking link */}
         <ShopLinkCard slug={shop.slug} />
+
+        {/* Optional public profile (logo, about, location…) */}
+        <div className="mt-4">
+          <ShopProfileEditor shop={shop} />
+        </div>
 
         {/* Date navigation */}
         <div className="mt-6 flex flex-wrap items-center justify-between gap-4">

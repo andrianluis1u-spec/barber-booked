@@ -6,6 +6,8 @@ import {
   CalendarDays,
   Check,
   Clock,
+  ExternalLink,
+  Instagram,
   Loader2,
   MapPin,
   Phone,
@@ -61,6 +63,21 @@ export default function ShopBookingFlow({
   const taken = useQuery(
     api.appointments.takenSlots,
     dateKey ? { barberId: shop._id, dateKey } : "skip",
+  );
+
+  const logoUrl = useQuery(
+    api.barbers.logoUrl,
+    shop.logoStorageId ? { storageId: shop.logoStorageId } : "skip",
+  );
+
+  const hasProfileInfo = Boolean(
+    shop.logoStorageId ||
+      shop.tagline ||
+      shop.about ||
+      shop.address ||
+      shop.mapsUrl ||
+      shop.publicPhone ||
+      shop.instagramUrl,
   );
 
   // Next 14 days as a horizontal strip.
@@ -151,10 +168,88 @@ export default function ShopBookingFlow({
             className="rounded-full border-primary/25 text-primary"
           >
             <img src={logo} alt="" className="size-3.5 rounded-sm" />
-            Powered by Barber Booked
+            Powered by Booking Reminded
           </Badge>
         </div>
       </header>
+
+      {/* ── Shop profile — every field is optional and barber-controlled ── */}
+      {hasProfileInfo && (
+        <section className="mx-auto w-full max-w-3xl px-4 pt-8 sm:px-6">
+          <Card className="card-soft rounded-2xl">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-muted">
+                  {logoUrl ? (
+                    <img
+                      src={logoUrl}
+                      alt={shop.shopName}
+                      className="size-full object-cover"
+                    />
+                  ) : (
+                    <Scissors className="size-7 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-serif text-xl font-semibold tracking-tight">
+                    {shop.shopName}
+                  </h2>
+                  {shop.tagline && (
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {shop.tagline}
+                    </p>
+                  )}
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+                    {shop.address &&
+                      (shop.mapsUrl ? (
+                        <a
+                          href={shop.mapsUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
+                        >
+                          <MapPin className="size-3.5" />
+                          {shop.address}
+                          <ExternalLink className="size-3" />
+                        </a>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                          <MapPin className="size-3.5" />
+                          {shop.address}
+                        </span>
+                      ))}
+                    {shop.publicPhone && (
+                      <a
+                        href={`tel:${shop.publicPhone.replace(/\s/g, "")}`}
+                        className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        <Phone className="size-3.5" />
+                        {shop.publicPhone}
+                      </a>
+                    )}
+                    {shop.instagramUrl && (
+                      <a
+                        href={shop.instagramUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        <Instagram className="size-3.5" />
+                        Instagram
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {shop.about && (
+                <p className="mt-4 border-t border-border/60 pt-4 text-sm leading-6 text-muted-foreground">
+                  {shop.about}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
         {/* Stepper */}
@@ -528,7 +623,7 @@ export function CancelBookingPage() {
             </>
           )}
           <Button asChild className="mt-6 rounded-full">
-            <a href="/">Visit Barber Booked</a>
+            <a href="/">Visit Booking Reminded</a>
           </Button>
         </CardContent>
       </Card>
