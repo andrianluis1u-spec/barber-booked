@@ -30,6 +30,10 @@ const schema = defineSchema(
       isAnonymous: v.optional(v.boolean()), // is the user anonymous. do not remove
 
       role: v.optional(roleValidator), // role of the user. do not remove
+
+      // Password auth (Convex Auth Credentials provider). Only the bcrypt
+      // hash is stored — never the plain-text password.
+      passwordHash: v.optional(v.string()),
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
     // add other tables here
@@ -41,18 +45,16 @@ const schema = defineSchema(
       shopName: v.string(),
       city: v.string(),
       slug: v.string(),
-      ownerPhone: v.optional(v.string()),
-      services: v.optional(
-        v.array(
-          v.object({
-            id: v.string(),
-            name: v.string(),
-            price: v.number(),
-            minutes: v.number(),
-            blurb: v.string(),
-          }),
-        ),
-      ),
+      // The barber's own mobile number — used for new-booking alerts and
+      // the post-appointment follow-up. Required at onboarding.
+      ownerPhone: v.string(),
+      // The barber's UTC offset at onboarding time (getTimezoneOffset(), in
+      // minutes), so barber-facing SMS show the appointment in the shop's
+      // local clock time.
+      ownerUtcOffset: v.optional(v.number()),
+      // Public origin of the booking app (captured at onboarding), used to
+      // build links inside SMS messages.
+      bookingBaseUrl: v.string(),
     }).index("by_slug", ["slug"]).index("by_owner", ["ownerUserId"]),
 
     // Bookings created by clients from a barber's unique booking link.
@@ -65,8 +67,9 @@ const schema = defineSchema(
       endAt: v.number(), // slot end (epoch ms)
       clientName: v.string(),
       clientPhone: v.string(), // phone number is the essential piece
-      serviceName: v.string(),
-      notes: v.optional(v.string()),
+      // Epoch ms of the client's explicit SMS consent at booking time.
+      // Presence means consent was given; the booking form requires it.
+      smsConsentAt: v.optional(v.number()),
       // Client's UTC offset at booking time (getTimezoneOffset(), in minutes),
       // so reminder messages can show the appointment time in local clock time.
       clientUtcOffset: v.optional(v.number()),
@@ -85,6 +88,34 @@ const schema = defineSchema(
       // Convex scheduled-function job id, so a cancelled appointment can stop
       // its reminder before it fires.
       reminderJobId: v.optional(v.id("_scheduled_functions")),
+      // New-booking alert to the BARBER, sent immediately after a client
+      // books: name, phone, date and time.
+      alertStatus: v.optional(
+        v.union(
+          v.literal("scheduled"),
+          v.literal("sending"),
+          v.literal("sent"),
+          v.literal("failed"),
+          v.literal("cancelled"),
+        ),
+      ),
+      // Post-appointment follow-up to the BARBER (not the client): one text
+      // one hour after the slot asking "Came or No-show", re-sent once at
+      // two hours if unanswered. Client is never messaged automatically.
+      followUpStatus: v.optional(
+        v.union(
+          v.literal("scheduled"),
+          v.literal("sent"),
+          v.literal("failed"),
+          v.literal("cancelled"),
+        ),
+      ),
+      followUpJobId: v.optional(v.id("_scheduled_functions")),
+      reNotifyJobId: v.optional(v.id("_scheduled_functions")),
+      // Secret token generated at booking time. Embedded in the client's
+      // cancel link (1-hour reminder) and in the no-show rebook link. Lets a
+      // client cancel/rebook without an account; verified server-side.
+      cancelToken: v.optional(v.string()),
       // pending  -> waiting for the barber to decide
       // confirmed -> barber confirmed the client showed up
       // noShow    -> barber marked the client as a no-show
@@ -98,7 +129,8 @@ const schema = defineSchema(
     })
       .index("by_barber_and_date", ["barberId", "dateKey"])
       .index("by_status", ["status"])
-      .index("by_reminder_status", ["reminderStatus"]),
+      .index("by_reminder_status", ["reminderStatus"])
+      .index("by_cancel_token", ["cancelToken"]),
   },
   {
     schemaValidation: false,

@@ -25,6 +25,26 @@ async function requireOwnership(
   }
 }
 
+/** Best-effort cancellation of a scheduled job that may have already run. */
+async function tryCancelJob(
+  ctx: any,
+  jobId: Id<"_scheduled_functions"> | undefined,
+) {
+  if (!jobId) return;
+  try {
+    await ctx.scheduler.cancel(jobId);
+  } catch {
+    // Already fired or completed — nothing to cancel.
+  }
+}
+
+/** Stop all messages tied to a booking (reminder, alert, follow-up, re-notify). */
+async function stopAllJobs(ctx: any, appt: any) {
+  await tryCancelJob(ctx, appt.reminderJobId);
+  await tryCancelJob(ctx, appt.followUpJobId);
+  await tryCancelJob(ctx, appt.reNotifyJobId);
+}
+
 /** Public: slot starts already booked for one shop on one date. */
 export const takenSlots = query({
   args: { barberId: v.id("barbers"), dateKey: v.string() },
@@ -41,21 +61,33 @@ export const takenSlots = query({
   },
 });
 
-/** Public: create a booking at a specific shop. */
+/**
+ * Public: create a booking at a specific shop.
+ *
+ * Flow is service-free: date & time + name + phone + explicit SMS consent.
+ * The consent timestamp is stored server-side; without it no client SMS is
+ * ever sent. Double-booking the same slot at the same shop is rejected.
+ */
 export const createBooking = mutation({
   args: {
     barberId: v.id("barbers"),
     dateKey: v.string(),
     startAt: v.number(),
-    serviceName: v.string(),
     clientName: v.string(),
     clientPhone: v.string(),
     clientUtcOffset: v.optional(v.number()),
-    notes: v.optional(v.string()),
+    // Epoch ms of the client's explicit SMS consent — required.
+    smsConsentAt: v.number(),
   },
   handler: async (ctx, args) => {
     if (!isValidPhone(args.clientPhone)) {
       throw new Error("Please enter a valid phone number.");
+    }
+    if (args.clientName.trim().length < 2) {
+      throw new Error("Please enter your name.");
+    }
+    if (args.startAt <= Date.now()) {
+      throw new Error("That time has already passed. Choose a new one.");
     }
 
     const shop = await ctx.db.get(args.barberId);
@@ -75,6 +107,17 @@ export const createBooking = mutation({
       throw new Error("Sorry — that time was just reserved. Choose another.");
     }
 
+    // Consent is mandatory: the checkbox on the booking form is required.
+    if (!args.smsConsentAt) {
+      throw new Error("Please agree to receive SMS messages to continue.");
+    }
+
+    // Secret token for the client's cancel / rebook links.
+    const cancelToken =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID().replace(/-/g, "")
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+
     const id = await ctx.db.insert("appointments", {
       barberId: args.barberId,
       dateKey: args.dateKey,
@@ -83,26 +126,61 @@ export const createBooking = mutation({
       clientName: args.clientName.trim(),
       clientPhone: args.clientPhone.trim(),
       clientUtcOffset: args.clientUtcOffset,
-      serviceName: args.serviceName,
-      notes: args.notes?.trim() || undefined,
+      smsConsentAt: args.smsConsentAt,
+      cancelToken,
       status: "pending",
       reminderStatus: "scheduled",
+      alertStatus: "scheduled",
+      followUpStatus: "scheduled",
     });
 
-    // Fire the client's reminder one hour before the slot starts.
-    const fireAt = Math.max(args.startAt - 60 * 60 * 1000, Date.now() + 5_000);
-    const jobId = await ctx.scheduler.runAt(
-      fireAt,
+    const now = Date.now();
+    const HOUR = 60 * 60 * 1000;
+
+    // 1) Immediate alert to the barber: name, phone, date, time.
+    const alertJobId = await ctx.scheduler.runAfter(
+      5_000,
+      internal.reminders.sendNewBookingAlert,
+      { appointmentId: id },
+    );
+
+    // 2) Client reminder one hour before the slot (with cancel link).
+    const reminderFireAt = Math.max(args.startAt - HOUR, now + 5_000);
+    const reminderJobId = await ctx.scheduler.runAt(
+      reminderFireAt,
       internal.reminders.sendReminder,
       { appointmentId: id },
     );
-    await ctx.db.patch(id, { reminderJobId: jobId });
+
+    // 3) Post-appointment follow-up to the barber one hour after the slot:
+    //    "Came or No-show?" — re-sent once at two hours (same job chain).
+    const followUpFireAt = Math.max(args.startAt + HOUR, now + 10_000);
+    const followUpJobId = await ctx.scheduler.runAt(
+      followUpFireAt,
+      internal.reminders.sendFollowUp,
+      { appointmentId: id },
+    );
+
+    // 4) If the barber has not answered by two hours after the slot, the
+    //    follow-up fires again (one reminder only).
+    const reNotifyJobId = await ctx.scheduler.runAt(
+      args.startAt + 2 * HOUR,
+      internal.reminders.sendFollowUp,
+      { appointmentId: id },
+    );
+
+    await ctx.db.patch(id, {
+      alertJobId,
+      reminderJobId,
+      followUpJobId,
+      reNotifyJobId,
+    });
 
     return id;
   },
 });
 
-/** Barber-scoped: my shop's appointments for one date. */
+/** Barber-scoped: my shop's appointments for one date (minimal projection). */
 export const byDay = query({
   args: { dateKey: v.string() },
   handler: async (ctx, { dateKey }) => {
@@ -116,7 +194,15 @@ export const byDay = query({
         q.eq("barberId", shop._id).eq("dateKey", dateKey),
       )
       .collect();
-    return rows.sort((a, b) => a.startAt - b.startAt);
+    return rows.sort((a, b) => a.startAt - b.startAt).map((a) => ({
+      _id: a._id,
+      startAt: a.startAt,
+      clientName: a.clientName,
+      clientPhone: a.clientPhone,
+      status: a.status,
+      reminderStatus: a.reminderStatus,
+      followUpStatus: a.followUpStatus,
+    }));
   },
 });
 
@@ -129,11 +215,21 @@ export const confirm = mutation({
     const appt = await ctx.db.get(id);
     if (!appt) throw new Error("Not found.");
     await requireOwnership(ctx, userId, appt.barberId);
-    await ctx.db.patch(id, { status: "confirmed" });
+    if (appt.status === "cancelled") return;
+    // Barber answered the follow-up: stop further nudges.
+    await stopAllJobs(ctx, appt);
+    await ctx.db.patch(id, {
+      status: "confirmed",
+      followUpStatus: "cancelled",
+    });
   },
 });
 
-/** Barber-scoped: no-show — client would be invited to rebook. */
+/**
+ * Barber-scoped: no-show. The barber's explicit decision is what triggers
+ * the client's "book a new date" SMS — clients are never messaged
+ * automatically.
+ */
 export const markNoShow = mutation({
   args: { id: v.id("appointments") },
   handler: async (ctx, { id }) => {
@@ -142,11 +238,26 @@ export const markNoShow = mutation({
     const appt = await ctx.db.get(id);
     if (!appt) throw new Error("Not found.");
     await requireOwnership(ctx, userId, appt.barberId);
-    await ctx.db.patch(id, { status: "noShow" });
+    if (appt.status === "noShow") return; // already handled
+    if (appt.status === "cancelled") {
+      throw new Error("This appointment was cancelled.");
+    }
+    // Barber answered the follow-up: stop further nudges.
+    await stopAllJobs(ctx, appt);
+    await ctx.db.patch(id, {
+      status: "noShow",
+      followUpStatus: "cancelled",
+    });
+    // Text the client an invitation to rebook (consent checked in the action).
+    await ctx.scheduler.runAfter(
+      5_000,
+      internal.reminders.sendRebookInvite,
+      { appointmentId: id },
+    );
   },
 });
 
-/** Barber-scoped: cancel a booking (frees the slot + cancels the reminder). */
+/** Barber-scoped: cancel a booking (frees the slot + stops all messages). */
 export const cancel = mutation({
   args: { id: v.id("appointments") },
   handler: async (ctx, { id }) => {
@@ -155,17 +266,13 @@ export const cancel = mutation({
     const appt = await ctx.db.get(id);
     if (!appt) throw new Error("Not found.");
     await requireOwnership(ctx, userId, appt.barberId);
-    // Stop the scheduled reminder if it has not run yet.
-    if (appt.reminderStatus === "scheduled" && appt.reminderJobId) {
-      try {
-        await ctx.scheduler.cancel(appt.reminderJobId);
-      } catch {
-        // Already fired — the reminder's own guard handles this case.
-      }
-    }
+    if (appt.status === "cancelled") return;
+    await stopAllJobs(ctx, appt);
     await ctx.db.patch(id, {
       status: "cancelled",
       reminderStatus: "cancelled",
+      alertStatus: "cancelled",
+      followUpStatus: "cancelled",
     });
   },
 });

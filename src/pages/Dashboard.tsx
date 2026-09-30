@@ -9,6 +9,7 @@ import {
   Copy,
   Link2,
   LogOut,
+  Phone,
   Scissors,
   UserX,
   X,
@@ -21,7 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
-import { startAtToSlot, toDateKey } from "@/lib/booking";
+import { isValidPhone, startAtToSlot, toDateKey } from "@/lib/booking";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -62,6 +63,7 @@ function Onboarding() {
   const createShop = useMutation(api.barbers.createShop);
   const [shopName, setShopName] = useState("");
   const [city, setCity] = useState("");
+  const [ownerPhone, setOwnerPhone] = useState("");
   const [slug, setSlug] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -100,10 +102,21 @@ function Onboarding() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!isValidPhone(ownerPhone)) {
+      setError("Please enter a valid phone number, e.g. +15550102030.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
-      await createShop({ shopName, city, slug });
+      await createShop({
+        shopName,
+        city,
+        slug,
+        ownerPhone: ownerPhone.trim(),
+        ownerUtcOffset: new Date().getTimezoneOffset(),
+        bookingBaseUrl: window.location.origin,
+      });
       toast.success("Your booking page is live.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -139,6 +152,26 @@ function Onboarding() {
                 required
                 minLength={2}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ownerPhone">Your mobile number</Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                <Input
+                  id="ownerPhone"
+                  type="tel"
+                  value={ownerPhone}
+                  onChange={(e) => setOwnerPhone(e.target.value)}
+                  placeholder="+1 555 010 2030"
+                  className="pl-9"
+                  autoComplete="tel"
+                  required
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                With country code — new bookings and follow-ups are texted
+                here.
+              </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
@@ -202,7 +235,12 @@ function Onboarding() {
             <Button
               type="submit"
               className="w-full rounded-full"
-              disabled={submitting || slugState === "taken" || slugState === "short"}
+              disabled={
+                submitting ||
+                slugState === "taken" ||
+                slugState === "short" ||
+                !isValidPhone(ownerPhone)
+              }
             >
               {submitting ? "Creating…" : "Create my booking page"}
             </Button>
@@ -454,8 +492,7 @@ export default function Dashboard() {
                         </Badge>
                       </div>
                       <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                        {appt.serviceName} · {appt.clientPhone}
-                        {appt.notes ? ` · "${appt.notes}"` : ""}
+                        {appt.clientPhone}
                       </p>
                       {appt.reminderStatus &&
                         appt.reminderStatus !== "cancelled" && (
@@ -467,6 +504,13 @@ export default function Dashboard() {
                           >
                             <Clock className="size-3" />
                             {REMINDER_STYLE[appt.reminderStatus]?.label}
+                          </p>
+                        )}
+                      {appt.followUpStatus === "sent" &&
+                        appt.status === "pending" && (
+                          <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                            <Phone className="size-3" />
+                            Asked by text: came or no-show?
                           </p>
                         )}
                     </div>
@@ -510,8 +554,9 @@ export default function Dashboard() {
         </div>
 
         <p className="mt-10 text-center text-xs text-muted-foreground">
-          Clients are texted automatically one hour before their appointment.
-          Appointments booked through your link appear here in real time.
+          New bookings are texted to you instantly, and one hour after each
+          appointment you get a Came / No-show nudge. Clients are reminded an
+          hour before their time with a link to cancel.
         </p>
       </main>
     </div>

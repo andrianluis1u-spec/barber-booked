@@ -10,18 +10,19 @@ import {
   MapPin,
   Phone,
   Scissors,
+  ShieldCheck,
   User,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
-import type { Doc, Id } from "@/convex/_generated/dataModel";
+import type { Doc } from "@/convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import logo from "@/assets/logo.svg";
 import {
   SLOT_MINUTES,
@@ -30,34 +31,32 @@ import {
   toDateKey,
 } from "@/lib/booking";
 import { cn } from "@/lib/utils";
-import type { ServiceId } from "@/lib/booking";
 
-type Step = 1 | 2 | 3 | 4;
+type Step = 1 | 2 | 3;
 
 const OPEN_MIN = 9 * 60; // 09:00
 const CLOSE_MIN = 20 * 60; // 20:00
 
 /**
- * The full client booking flow for one shop: service → date & time → details
- * → confirmation. Reused by the unique per-barber page at /b/<slug>.
+ * The client booking flow for one shop: date & time → details + SMS consent
+ * → confirmation. Service-free by design. Reused by the unique per-barber
+ * page at /b/<slug>; `rebookToken` preselects a date (no-show rebook link).
  */
 export default function ShopBookingFlow({
   shop,
+  rebookToken,
 }: {
   shop: Doc<"barbers">;
+  rebookToken?: string;
 }) {
   const [step, setStep] = useState<Step>(1);
-  const [serviceId, setServiceId] = useState<string | null>(null);
   const [dateKey, setDateKey] = useState<string | null>(null);
   const [slot, setSlot] = useState<number | null>(null); // epoch ms
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [notes, setNotes] = useState("");
+  const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const services = shop.services ?? [];
-  const service = services.find((s) => s.id === serviceId) ?? null;
 
   const taken = useQuery(
     api.appointments.takenSlots,
@@ -103,7 +102,11 @@ export default function ShopBookingFlow({
   const createBooking = useMutation(api.appointments.createBooking);
 
   async function handleSubmit() {
-    if (!service || !dateKey || slot === null) return;
+    if (!dateKey || slot === null) return;
+    if (!consent) {
+      setError("Please agree to receive SMS messages to continue.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -111,29 +114,17 @@ export default function ShopBookingFlow({
         barberId: shop._id,
         dateKey,
         startAt: slot,
-        serviceName: service.name,
         clientName: name.trim(),
         clientPhone: phone.trim(),
         clientUtcOffset: new Date().getTimezoneOffset(),
-        notes: notes.trim() || undefined,
+        smsConsentAt: Date.now(),
       });
-      setStep(4);
+      setStep(3);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
       setSubmitting(false);
     }
-  }
-
-  function restart() {
-    setStep(1);
-    setServiceId(null);
-    setDateKey(null);
-    setSlot(null);
-    setName("");
-    setPhone("");
-    setNotes("");
-    setError(null);
   }
 
   return (
@@ -168,87 +159,38 @@ export default function ShopBookingFlow({
       <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
         {/* Stepper */}
         <ol className="mb-8 flex items-center gap-2">
-          {["Service", "Date & time", "Your details", "Done"].map(
-            (label, i) => {
-              const n = (i + 1) as Step;
-              const active = step === n;
-              const done = step > n;
-              return (
-                <li key={label} className="flex flex-1 items-center gap-2">
-                  <span
-                    className={cn(
-                      "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors",
-                      (done || active) &&
-                        "bg-primary text-primary-foreground",
-                      !done && !active && "bg-muted text-muted-foreground",
-                    )}
-                  >
-                    {done ? <Check className="size-3.5" /> : n}
-                  </span>
-                  <span
-                    className={cn(
-                      "hidden text-xs font-medium sm:block",
-                      active ? "text-foreground" : "text-muted-foreground",
-                    )}
-                  >
-                    {label}
-                  </span>
-                  {i < 3 && <span className="h-px flex-1 bg-border" />}
-                </li>
-              );
-            },
-          )}
-        </ol>
-
-        {/* Step 1 — service */}
-        {step === 1 && (
-          <section>
-            <h1 className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
-              Select your service
-            </h1>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              Every service at {shop.shopName} begins with a short
-              consultation. Choose the one that suits you to continue.
-            </p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              {services.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => {
-                    setServiceId(s.id as ServiceId);
-                    setStep(2);
-                  }}
+          {["Date & time", "Your details", "Done"].map((label, i) => {
+            const n = (i + 1) as Step;
+            const active = step === n;
+            const done = step > n;
+            return (
+              <li key={label} className="flex flex-1 items-center gap-2">
+                <span
                   className={cn(
-                    "group flex items-center gap-4 rounded-2xl border bg-card p-4 text-left transition-all hover:border-primary/50 hover:shadow-sm",
-                    serviceId === s.id && "border-primary ring-2 ring-ring/30",
+                    "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors",
+                    (done || active) &&
+                      "bg-primary text-primary-foreground",
+                    !done && !active && "bg-muted text-muted-foreground",
                   )}
                 >
-                  <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <Scissors className="size-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{s.name}</p>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {s.blurb}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-serif text-lg font-semibold text-primary">
-                      ${s.price}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {s.minutes} min
-                    </p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
+                  {done ? <Check className="size-3.5" /> : n}
+                </span>
+                <span
+                  className={cn(
+                    "hidden text-xs font-medium sm:block",
+                    active ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {label}
+                </span>
+                {i < 2 && <span className="h-px flex-1 bg-border" />}
+              </li>
+            );
+          })}
+        </ol>
 
-        {/* Step 2 — date & time */}
-        {step === 2 && (
+        {/* Step 1 — date & time */}
+        {step === 1 && (
           <section>
             <h1 className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
               Choose a date and time
@@ -340,26 +282,23 @@ export default function ShopBookingFlow({
               )}
             </div>
 
-            <div className="mt-6 flex justify-between">
-              <Button variant="ghost" onClick={() => setStep(1)}>
-                <ArrowLeft className="mr-1.5 size-4" /> Back
-              </Button>
-              <Button disabled={slot === null} onClick={() => setStep(3)}>
+            <div className="mt-6 flex justify-end">
+              <Button disabled={slot === null} onClick={() => setStep(2)}>
                 Continue <ArrowRight className="ml-1.5 size-4" />
               </Button>
             </div>
           </section>
         )}
 
-        {/* Step 3 — details */}
-        {step === 3 && (
+        {/* Step 2 — details + consent */}
+        {step === 2 && (
           <section>
             <h1 className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
               Your details
             </h1>
             <p className="mt-1.5 text-sm text-muted-foreground">
               {shop.shopName} receives your appointment immediately. Your
-              phone number is kept for appointment reminders only.
+              phone number is used for appointment messages only.
             </p>
             <Card className="card-soft mt-6 rounded-2xl">
               <CardContent className="space-y-4 p-6">
@@ -397,36 +336,42 @@ export default function ShopBookingFlow({
                     </p>
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="notes">Notes (optional)</Label>
-                  <Textarea
-                    id="notes"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Anything the barber should know — e.g. skin fade, longer on top…"
-                    rows={3}
+
+                {/* Required SMS consent */}
+                <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/5 p-4">
+                  <Checkbox
+                    id="sms-consent"
+                    checked={consent}
+                    onCheckedChange={(v) => setConsent(v === true)}
+                    className="mt-0.5"
                   />
+                  <div>
+                    <Label
+                      htmlFor="sms-consent"
+                      className="text-sm font-medium leading-5"
+                    >
+                      Send me text messages about this appointment
+                    </Label>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      A confirmation to the barber, one reminder an hour
+                      before your time, and a rebooking link if needed. Reply
+                      STOP at any time to opt out.
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Summary */}
-            {service && dateKey && slot !== null && (
+            {dateKey && slot !== null && (
               <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-primary/25 bg-primary/5 px-5 py-4 text-sm">
-                <span className="flex items-center gap-1.5 font-medium">
-                  <Scissors className="size-4 text-primary" />
-                  {service.name}
-                </span>
                 <span className="flex items-center gap-1.5">
                   <CalendarDays className="size-4 text-primary" />
                   {format(new Date(dateKey + "T12:00:00"), "EEE d MMM")}
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Clock className="size-4 text-primary" />
-                  {startAtToSlot(slot)}
-                </span>
-                <span className="ml-auto font-serif text-lg font-semibold text-primary">
-                  ${service.price}
+                  {startAtToSlot(slot)} · {SLOT_MINUTES} min
                 </span>
               </div>
             )}
@@ -440,7 +385,7 @@ export default function ShopBookingFlow({
             <div className="mt-6 flex justify-between">
               <Button
                 variant="ghost"
-                onClick={() => setStep(2)}
+                onClick={() => setStep(1)}
                 disabled={submitting}
               >
                 <ArrowLeft className="mr-1.5 size-4" /> Back
@@ -448,7 +393,10 @@ export default function ShopBookingFlow({
               <Button
                 onClick={handleSubmit}
                 disabled={
-                  submitting || name.trim().length < 2 || !isValidPhone(phone)
+                  submitting ||
+                  name.trim().length < 2 ||
+                  !isValidPhone(phone) ||
+                  !consent
                 }
               >
                 {submitting ? (
@@ -466,8 +414,8 @@ export default function ShopBookingFlow({
           </section>
         )}
 
-        {/* Step 4 — success */}
-        {step === 4 && (
+        {/* Step 3 — success */}
+        {step === 3 && (
           <section className="py-6 text-center">
             <motion.div
               initial={{ scale: 0.8, opacity: 0 }}
@@ -478,21 +426,37 @@ export default function ShopBookingFlow({
               <Check className="size-8 text-primary" />
             </motion.div>
             <h1 className="mt-6 font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
-              Your appointment is confirmed
+              Your appointment is booked
               {name.trim() ? `, ${name.trim().split(" ")[0]}` : ""}.
             </h1>
-            {service && dateKey && slot !== null && (
+            {dateKey && slot !== null && (
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                {service.name} at {shop.shopName} ·{" "}
+                {shop.shopName} ·{" "}
                 <span className="font-medium text-foreground">
                   {format(new Date(dateKey + "T12:00:00"), "EEEE d MMM")}
                 </span>{" "}
                 at {startAtToSlot(slot)}. The barber has been notified, and a
-                reminder will reach you an hour before your time.
+                reminder with a cancel link will reach you an hour before
+                your time.
               </p>
             )}
+            <p className="mx-auto mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+              <ShieldCheck className="size-3.5 text-primary" />
+              No account needed — this page was all it took.
+            </p>
             <div className="mt-8 flex justify-center gap-3">
-              <Button onClick={restart} variant="outline">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setStep(1);
+                  setDateKey(null);
+                  setSlot(null);
+                  setName("");
+                  setPhone("");
+                  setConsent(false);
+                  setError(null);
+                }}
+              >
                 Book another appointment
               </Button>
             </div>
@@ -500,5 +464,74 @@ export default function ShopBookingFlow({
         )}
       </main>
     </div>
+  );
+}
+
+/**
+ * Client cancellation page opened from the cancel link inside the 1-hour
+ * reminder SMS (/c/<token>). No login — the secret token is the proof.
+ */
+export function CancelBookingPage() {
+  const cancelByToken = useMutation(api.reminders.cancelByToken);
+  const [state, setState] = useState<"working" | "done" | "error">("working");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    const token = window.location.pathname.split("/").pop() ?? "";
+    cancelByToken({ token })
+      .then(() => setState("done"))
+      .catch((e: unknown) => {
+        setMessage(e instanceof Error ? e.message : "Something went wrong.");
+        setState("error");
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <main className="page-glow flex min-h-screen items-center justify-center p-6">
+      <Card className="card-soft w-full max-w-md rounded-2xl text-center">
+        <CardContent className="p-8">
+          {state === "working" && (
+            <>
+              <Loader2 className="mx-auto size-8 animate-spin text-primary" />
+              <h1 className="mt-4 font-serif text-xl font-semibold tracking-tight">
+                Cancelling your appointment…
+              </h1>
+            </>
+          )}
+          {state === "done" && (
+            <>
+              <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10">
+                <Check className="size-6 text-primary" />
+              </div>
+              <h1 className="mt-4 font-serif text-xl font-semibold tracking-tight">
+                Your appointment is cancelled
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                The time has been freed up. You can book again whenever it
+                suits you.
+              </p>
+            </>
+          )}
+          {state === "error" && (
+            <>
+              <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-destructive/10">
+                <Scissors className="size-6 text-destructive" />
+              </div>
+              <h1 className="mt-4 font-serif text-xl font-semibold tracking-tight">
+                We couldn't cancel that
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {message ||
+                  "This cancellation link is no longer valid. Please contact the shop."}
+              </p>
+            </>
+          )}
+          <Button asChild className="mt-6 rounded-full">
+            <a href="/">Visit Barber Booked</a>
+          </Button>
+        </CardContent>
+      </Card>
+    </main>
   );
 }
